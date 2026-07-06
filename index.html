@@ -247,11 +247,13 @@ function findCandidates(sentenceTokens, transcriptWords, normTranscript){
   const minLen = Math.max(1, n - 2);
   const maxLen = n + Math.min(4, Math.ceil(n * 0.4));
   const candidates = [];
+  let bestScoreSeen = 0; // per diagnostica, anche sotto soglia
   const step = n > 12 ? 2 : 1; // per frasi lunghe, scansione un po' più larga per velocità
   for(let len = minLen; len <= maxLen; len++){
     for(let i = 0; i + len <= normTranscript.length; i += step){
       const window = normTranscript.slice(i, i + len);
       const score = lcsLength(sentenceTokens, window) / n;
+      if(score > bestScoreSeen) bestScoreSeen = score;
       if(score >= 0.55){
         candidates.push({
           startIdx: i,
@@ -274,6 +276,7 @@ function findCandidates(sentenceTokens, transcriptWords, normTranscript){
       merged.push(c);
     }
   }
+  merged.bestScoreSeen = bestScoreSeen; // agganciato all'array per comodità di lettura fuori
   return merged;
 }
 
@@ -416,9 +419,12 @@ document.getElementById("btnTranscribe").addEventListener("click", async () => {
     const policy = document.getElementById("takePolicy").value;
     alignedSegments = [];
 
+    log(`Numero di frasi nello script: ${sentences.length}.`);
     for(const s of sentences){
       const candidates = findCandidates(s.tokens, transcriptWords, normTranscript);
       const chosen = pickTake(candidates, policy);
+      const bestPct = Math.round((candidates.bestScoreSeen || 0) * 100);
+      log(`Frase "${s.text}" (${s.tokens.length} parole) — miglior punteggio trovato: ${bestPct}%${chosen ? "" : " (sotto soglia 55%, scartata)"}`);
       alignedSegments.push({ text: s.text, candidates, chosen });
     }
     setProgress(100);
