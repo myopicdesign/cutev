@@ -225,23 +225,39 @@ function splitScriptIntoSentences(text){
 }
 
 // ---------- Allineamento: LCS tra due sequenze di token ----------
-function lcsLength(a, b){
+// LCS con backtrace: oltre alla lunghezza della corrispondenza, restituisce
+// l'indice (relativo alla finestra "b") della prima e dell'ultima parola
+// che ha davvero trovato un match nello script. Questo permette di tagliare
+// il segmento esattamente ai bordi delle parole corrispondenti, escludendo
+// parole di contorno (esitazioni, pause, filler) catturate dalla finestra.
+function lcsMatch(a, b){
   const n = a.length, m = b.length;
-  const dp = new Array(m+1).fill(0);
+  const dp = Array.from({length: n+1}, () => new Array(m+1).fill(0));
   for(let i=1;i<=n;i++){
-    let prev = 0;
     for(let j=1;j<=m;j++){
-      const tmp = dp[j];
-      if(a[i-1] === b[j-1]) dp[j] = prev + 1;
-      else dp[j] = Math.max(dp[j], dp[j-1]);
-      prev = tmp;
+      if(a[i-1] === b[j-1]) dp[i][j] = dp[i-1][j-1] + 1;
+      else dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
     }
   }
-  return dp[m];
+  let i = n, j = m, firstJ = null, lastJ = null;
+  while(i > 0 && j > 0){
+    if(a[i-1] === b[j-1]){
+      if(lastJ === null) lastJ = j - 1;
+      firstJ = j - 1;
+      i--; j--;
+    } else if(dp[i-1][j] >= dp[i][j-1]){
+      i--;
+    } else {
+      j--;
+    }
+  }
+  return { length: dp[n][m], firstJ, lastJ };
 }
 
 // Per ogni frase dello script, cerca finestre candidate nella trascrizione
 // e restituisce tutte le occorrenze sopra soglia con relativo punteggio.
+// Il segmento di ogni candidato è già ritagliato alle parole effettivamente
+// corrispondenti (niente parole di contorno/pause ai bordi).
 function findCandidates(sentenceTokens, transcriptWords, normTranscript){
   const n = sentenceTokens.length;
   const minLen = Math.max(1, n - 2);
@@ -252,15 +268,18 @@ function findCandidates(sentenceTokens, transcriptWords, normTranscript){
   for(let len = minLen; len <= maxLen; len++){
     for(let i = 0; i + len <= normTranscript.length; i += step){
       const window = normTranscript.slice(i, i + len);
-      const score = lcsLength(sentenceTokens, window) / n;
+      const { length: matchLen, firstJ, lastJ } = lcsMatch(sentenceTokens, window);
+      const score = matchLen / n;
       if(score > bestScoreSeen) bestScoreSeen = score;
-      if(score >= 0.55){
+      if(score >= 0.55 && firstJ !== null){
+        const startIdx = i + firstJ;
+        const endIdx = i + lastJ;
         candidates.push({
-          startIdx: i,
-          endIdx: i + len - 1,
+          startIdx,
+          endIdx,
           score,
-          startTime: transcriptWords[i].start,
-          endTime: transcriptWords[i + len - 1].end
+          startTime: transcriptWords[startIdx].start,
+          endTime: transcriptWords[endIdx].end
         });
       }
     }
@@ -505,7 +524,7 @@ document.getElementById("btnRender").addEventListener("click", async () => {
   log("--- Inizio montaggio finale ---");
 
   try{
-    const PAD = 0.08; // piccolo margine per non tagliare le consonanti
+    const PAD = 0.002; // massimo 2ms di margine: tagli netti, niente pause prima della parola
 
     const videoTrack = await mediaInput.getPrimaryVideoTrack();
     const audioTrack = await mediaInput.getPrimaryAudioTrack();
