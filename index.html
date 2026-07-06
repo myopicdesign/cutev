@@ -190,7 +190,7 @@ import {
   AudioBufferSink, VideoSampleSink, AudioSampleSink,
   VideoSampleSource, AudioSampleSource,
   QUALITY_HIGH
-} from "https://cdn.jsdelivr.net/npm/mediabunny@1.40.1/+esm";
+} from "https://esm.sh/mediabunny@1.40.1";
 
 env.allowLocalModels = false;
 
@@ -324,6 +324,7 @@ document.getElementById("btnTranscribe").addEventListener("click", async () => {
     log("Apro il video (Mediabunny)...");
     mediaInput = new Input({ source: new BlobSource(videoFile), formats: ALL_FORMATS });
     mediaDuration = await mediaInput.computeDuration();
+    log(`Durata video rilevata: ${mediaDuration.toFixed(2)}s.`);
     setProgress(10);
 
     const audioTrack = await mediaInput.getPrimaryAudioTrack();
@@ -356,6 +357,7 @@ document.getElementById("btnTranscribe").addEventListener("click", async () => {
       return;
     }
     log(`Sample rate rilevato: ${origSampleRate} Hz.`);
+    log(`Audio estratto: ${(totalFrames / origSampleRate).toFixed(2)}s (${chunks.length} blocchi).`);
     const fullMono = new Float32Array(totalFrames);
     let off = 0;
     for(const c of chunks){ fullMono.set(c, off); off += c.length; }
@@ -383,6 +385,7 @@ document.getElementById("btnTranscribe").addEventListener("click", async () => {
     const lang = document.getElementById("langSelect").value;
     const result = await transcriber(samples, {
       language: lang,
+      task: "transcribe", // fondamentale: senza questo Whisper a volte TRADUCE in inglese invece di trascrivere
       chunk_length_s: 30,
       stride_length_s: 5,
       return_timestamps: "word"
