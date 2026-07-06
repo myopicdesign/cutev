@@ -1,0 +1,571 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ScriptCut — Montaggio automatico da script</title>
+<style>
+  :root{
+    --bg: #0e1013;
+    --panel: #171a1f;
+    --panel-2: #1e2228;
+    --line: #2a2f37;
+    --text: #e8e6e1;
+    --text-dim: #9a9fa8;
+    --accent: #4fd1a5;
+    --accent-dim: #2c6b57;
+    --warn: #e0a458;
+    --danger: #e0685f;
+    --mono: "SF Mono", "JetBrains Mono", Consolas, monospace;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family: -apple-system, "Segoe UI", Inter, sans-serif;
+    line-height:1.5;
+  }
+  header{
+    padding: 28px 32px 18px; border-bottom:1px solid var(--line);
+  }
+  header h1{
+    margin:0; font-size: 22px; letter-spacing:-0.02em; font-weight:700;
+  }
+  header h1 span{color:var(--accent);}
+  header p{margin:6px 0 0; color:var(--text-dim); font-size:14px;}
+  main{
+    max-width: 980px; margin: 0 auto; padding: 28px 24px 80px;
+    display:flex; flex-direction:column; gap:20px;
+  }
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:10px;
+    padding:20px 22px;
+  }
+  .card h2{
+    margin:0 0 4px; font-size:14px; text-transform:uppercase; letter-spacing:.08em;
+    color:var(--text-dim); font-weight:600;
+  }
+  .row{display:flex; gap:16px; flex-wrap:wrap;}
+  .col{flex:1; min-width:260px;}
+  label.field{display:block; margin-top:14px;}
+  label.field > span{display:block; font-size:13px; color:var(--text-dim); margin-bottom:6px;}
+  input[type=file]{
+    width:100%; padding:10px; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:6px; color:var(--text); font-size:13px;
+  }
+  textarea{
+    width:100%; min-height:180px; background:var(--panel-2); border:1px solid var(--line);
+    border-radius:6px; color:var(--text); padding:12px; font-size:14px; resize:vertical;
+    font-family:var(--mono);
+  }
+  select{
+    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
+    padding:8px 10px; border-radius:6px; font-size:13px;
+  }
+  button{
+    background:var(--accent); color:#0a1613; border:none; border-radius:7px;
+    padding:11px 20px; font-size:14px; font-weight:700; cursor:pointer;
+    transition:filter .15s ease;
+  }
+  button:hover{filter:brightness(1.08);}
+  button:disabled{background:var(--panel-2); color:var(--text-dim); cursor:not-allowed;}
+  button.secondary{
+    background:transparent; border:1px solid var(--accent); color:var(--accent);
+  }
+  .log{
+    font-family:var(--mono); font-size:12.5px; background:#0a0c0f; border:1px solid var(--line);
+    border-radius:6px; padding:14px; max-height:220px; overflow-y:auto; white-space:pre-wrap;
+    color:var(--text-dim);
+  }
+  .log .ok{color:var(--accent);}
+  .log .err{color:var(--danger);}
+  .progress-bar{
+    height:6px; background:var(--panel-2); border-radius:3px; overflow:hidden; margin-top:10px;
+  }
+  .progress-bar > div{
+    height:100%; background:var(--accent); width:0%; transition:width .2s ease;
+  }
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  th{
+    text-align:left; color:var(--text-dim); font-weight:600; font-size:11px;
+    text-transform:uppercase; letter-spacing:.05em; padding:8px 8px; border-bottom:1px solid var(--line);
+  }
+  td{padding:9px 8px; border-bottom:1px solid var(--line); vertical-align:top;}
+  td.sent{max-width:340px; font-size:13px;}
+  td.time{font-family:var(--mono); color:var(--text-dim); white-space:nowrap;}
+  .badge{
+    display:inline-block; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:20px;
+    text-transform:uppercase; letter-spacing:.04em;
+  }
+  .badge.good{background:rgba(79,209,165,.15); color:var(--accent);}
+  .badge.warn{background:rgba(224,164,88,.15); color:var(--warn);}
+  .badge.bad{background:rgba(224,104,95,.15); color:var(--danger);}
+  video{width:100%; border-radius:8px; background:#000; display:block;}
+  .hidden{display:none !important;}
+  .hint{font-size:12.5px; color:var(--text-dim); margin-top:6px;}
+  a.dl{color:var(--accent); font-weight:700; text-decoration:none;}
+  a.dl:hover{text-decoration:underline;}
+  .footer-note{color:var(--text-dim); font-size:12px; text-align:center; padding-top:10px;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Script<span>Cut</span></h1>
+  <p>Monta il video seguendo lo script: trascrizione, allineamento e taglio girano tutti nel tuo browser. Nessun upload, nessuna API, nessun server.</p>
+</header>
+
+<main>
+
+  <section class="card">
+    <h2>1 — Materiali</h2>
+    <div class="row">
+      <div class="col">
+        <label class="field">
+          <span>Video (il tuo ciak)</span>
+          <input type="file" id="videoInput" accept="video/*">
+        </label>
+      </div>
+      <div class="col">
+        <label class="field">
+          <span>Lingua del parlato</span>
+          <select id="langSelect">
+            <option value="italian" selected>Italiano</option>
+            <option value="english">Inglese</option>
+            <option value="spanish">Spagnolo</option>
+            <option value="french">Francese</option>
+            <option value="german">Tedesco</option>
+          </select>
+        </label>
+      </div>
+    </div>
+    <label class="field">
+      <span>Script (incolla il testo che reciti — una frase per riga o punteggiatura normale)</span>
+      <textarea id="scriptInput" placeholder="Ciao a tutti, benvenuti nel canale. Oggi parliamo di come funziona questo tool..."></textarea>
+    </label>
+    <label class="field">
+      <span>Se una frase è ripetuta più volte nel video, quale take tenere?</span>
+      <select id="takePolicy">
+        <option value="last" selected>Ultima ripetizione (di solito la più corretta)</option>
+        <option value="best">Corrispondenza migliore col testo</option>
+      </select>
+    </label>
+    <div style="margin-top:18px;">
+      <button id="btnTranscribe">Trascrivi e allinea</button>
+    </div>
+    <div class="progress-bar"><div id="progFill"></div></div>
+    <div class="log" id="log">In attesa...</div>
+  </section>
+
+  <section class="card hidden" id="alignCard">
+    <h2>2 — Segmenti individuati</h2>
+    <p class="hint">Ogni riga è una frase dello script. Se sono state trovate più ripetizioni, puoi scegliere quale take usare dal menu.</p>
+    <table>
+      <thead>
+        <tr><th>#</th><th>Frase (script)</th><th>Take scelto</th><th>Confidenza</th><th></th></tr>
+      </thead>
+      <tbody id="alignBody"></tbody>
+    </table>
+    <div style="margin-top:18px;">
+      <button id="btnRender">Genera video montato</button>
+    </div>
+  </section>
+
+  <section class="card hidden" id="resultCard">
+    <h2>3 — Risultato</h2>
+    <video id="resultVideo" controls></video>
+    <div style="margin-top:14px;">
+      <a class="dl" id="downloadLink" download="montaggio.mp4">⬇ Scarica il video montato (.mp4)</a>
+    </div>
+  </section>
+
+  <p class="footer-note">Modelli e librerie caricati da CDN pubblici (transformers.js, Mediabunny). Il file video non lascia mai il tuo computer.</p>
+
+</main>
+
+<script type="module">
+import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
+import {
+  Input, ALL_FORMATS, BlobSource,
+  Output, Mp4OutputFormat, BufferTarget,
+  AudioBufferSink, VideoSampleSink, AudioSampleSink,
+  VideoSampleSource, AudioSampleSource,
+  QUALITY_HIGH
+} from "https://cdn.jsdelivr.net/npm/mediabunny@1.40.1/+esm";
+
+env.allowLocalModels = false;
+
+const logEl = document.getElementById("log");
+const progFill = document.getElementById("progFill");
+function log(msg, cls){
+  const line = document.createElement("div");
+  if(cls) line.className = cls;
+  line.textContent = msg;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+function setProgress(pct){ progFill.style.width = Math.max(0,Math.min(100,pct)) + "%"; }
+
+// ---------- Normalizzazione testo ----------
+function normWord(w){
+  return w
+    .toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // rimuove accenti per il confronto
+    .replace(/[^a-z0-9']/g, "");
+}
+
+function splitScriptIntoSentences(text){
+  const raw = text
+    .split(/(?<=[.!?])\s+|\n+/)
+    .map(s => s.trim())
+    .filter(Boolean);
+  return raw.map(sentence => ({
+    text: sentence,
+    tokens: sentence.split(/\s+/).map(normWord).filter(Boolean)
+  })).filter(s => s.tokens.length > 0);
+}
+
+// ---------- Allineamento: LCS tra due sequenze di token ----------
+function lcsLength(a, b){
+  const n = a.length, m = b.length;
+  const dp = new Array(m+1).fill(0);
+  for(let i=1;i<=n;i++){
+    let prev = 0;
+    for(let j=1;j<=m;j++){
+      const tmp = dp[j];
+      if(a[i-1] === b[j-1]) dp[j] = prev + 1;
+      else dp[j] = Math.max(dp[j], dp[j-1]);
+      prev = tmp;
+    }
+  }
+  return dp[m];
+}
+
+// Per ogni frase dello script, cerca finestre candidate nella trascrizione
+// e restituisce tutte le occorrenze sopra soglia con relativo punteggio.
+function findCandidates(sentenceTokens, transcriptWords, normTranscript){
+  const n = sentenceTokens.length;
+  const minLen = Math.max(1, n - 2);
+  const maxLen = n + Math.min(4, Math.ceil(n * 0.4));
+  const candidates = [];
+  const step = n > 12 ? 2 : 1; // per frasi lunghe, scansione un po' più larga per velocità
+  for(let len = minLen; len <= maxLen; len++){
+    for(let i = 0; i + len <= normTranscript.length; i += step){
+      const window = normTranscript.slice(i, i + len);
+      const score = lcsLength(sentenceTokens, window) / n;
+      if(score >= 0.55){
+        candidates.push({
+          startIdx: i,
+          endIdx: i + len - 1,
+          score,
+          startTime: transcriptWords[i].start,
+          endTime: transcriptWords[i + len - 1].end
+        });
+      }
+    }
+  }
+  // Deduplica candidati che si sovrappongono troppo, tenendo il migliore
+  candidates.sort((a,b) => a.startTime - b.startTime);
+  const merged = [];
+  for(const c of candidates){
+    const last = merged[merged.length - 1];
+    if(last && c.startTime < last.endTime + 0.15){
+      if(c.score > last.score) merged[merged.length - 1] = c;
+    } else {
+      merged.push(c);
+    }
+  }
+  return merged;
+}
+
+function pickTake(candidates, policy){
+  if(candidates.length === 0) return null;
+  if(policy === "last") return candidates[candidates.length - 1];
+  // "best": punteggio più alto, a parità vince il più recente nel tempo
+  return candidates.reduce((best, c) =>
+    (c.score > best.score || (c.score === best.score && c.startTime > best.startTime)) ? c : best
+  , candidates[0]);
+}
+
+function resampleLinear(samples, fromRate, toRate){
+  const ratio = fromRate / toRate;
+  const newLen = Math.round(samples.length / ratio);
+  const out = new Float32Array(newLen);
+  for(let i=0;i<newLen;i++){
+    const srcPos = i * ratio;
+    const i0 = Math.floor(srcPos), i1 = Math.min(i0+1, samples.length-1);
+    const frac = srcPos - i0;
+    out[i] = samples[i0] * (1-frac) + samples[i1] * frac;
+  }
+  return out;
+}
+
+// ---------- Stato globale ----------
+let videoFile = null;
+let mediaInput = null;      // istanza Input (mediabunny) riutilizzata tra trascrizione e rendering
+let mediaDuration = 0;
+let alignedSegments = [];   // { text, candidates, chosen }
+
+document.getElementById("videoInput").addEventListener("change", e => {
+  videoFile = e.target.files[0] || null;
+  mediaInput = null; // invalida, verrà ricreato al prossimo "Trascrivi"
+});
+
+document.getElementById("btnTranscribe").addEventListener("click", async () => {
+  const scriptText = document.getElementById("scriptInput").value.trim();
+  if(!videoFile){ log("Carica prima un video.", "err"); return; }
+  if(!scriptText){ log("Incolla lo script.", "err"); return; }
+
+  const btn = document.getElementById("btnTranscribe");
+  btn.disabled = true;
+  logEl.innerHTML = "";
+  setProgress(2);
+
+  try{
+    log("Apro il video (Mediabunny)...");
+    mediaInput = new Input({ source: new BlobSource(videoFile), formats: ALL_FORMATS });
+    mediaDuration = await mediaInput.computeDuration();
+    setProgress(10);
+
+    const audioTrack = await mediaInput.getPrimaryAudioTrack();
+    if(!audioTrack){ log("Il video non ha una traccia audio.", "err"); btn.disabled = false; return; }
+    log(`Diagnostica libreria — canDecode:${typeof audioTrack.canDecode} getSampleRate:${typeof audioTrack.getSampleRate} getNumberOfChannels:${typeof audioTrack.getNumberOfChannels}`);
+    const canDecodeAudio = await audioTrack.canDecode();
+    if(!canDecodeAudio){ log("Il codec audio di questo file non è decodificabile dal browser.", "err"); btn.disabled = false; return; }
+
+    log("Estraggo e decodifico l'audio...");
+    const sink = new AudioBufferSink(audioTrack);
+    const chunks = [];
+    let totalFrames = 0;
+    let origSampleRate = null; // letta dal primo blocco audio reale, mai dal metodo della libreria (inaffidabile)
+    for await (const wrapped of sink.buffers(0, mediaDuration)){
+      const buf = wrapped.buffer;
+      if(origSampleRate === null) origSampleRate = buf.sampleRate;
+      const len = buf.length;
+      const mono = new Float32Array(len);
+      const nCh = buf.numberOfChannels;
+      for(let ch=0; ch<nCh; ch++){
+        const data = buf.getChannelData(ch);
+        for(let i=0;i<len;i++) mono[i] += data[i] / nCh;
+      }
+      chunks.push(mono);
+      totalFrames += len;
+    }
+    if(origSampleRate === null){
+      log("Non sono riuscito a leggere alcun blocco audio dal video.", "err");
+      btn.disabled = false;
+      return;
+    }
+    log(`Sample rate rilevato: ${origSampleRate} Hz.`);
+    const fullMono = new Float32Array(totalFrames);
+    let off = 0;
+    for(const c of chunks){ fullMono.set(c, off); off += c.length; }
+
+    let samples = fullMono;
+    if(Math.round(origSampleRate) !== 16000){
+      samples = resampleLinear(fullMono, origSampleRate, 16000);
+    }
+    setProgress(28);
+
+    log("Carico il modello Whisper (prima volta: qualche minuto di download)...");
+    const transcriber = await pipeline(
+      "automatic-speech-recognition",
+      "Xenova/whisper-small",
+      { progress_callback: (p) => {
+          if(p.status === "progress" && p.file){
+            setProgress(28 + (p.progress || 0) * 0.3);
+          }
+        }
+      }
+    );
+    setProgress(58);
+
+    log("Trascrivo il parlato con timestamp parola per parola...");
+    const lang = document.getElementById("langSelect").value;
+    const result = await transcriber(samples, {
+      language: lang,
+      chunk_length_s: 30,
+      stride_length_s: 5,
+      return_timestamps: "word"
+    });
+    setProgress(78);
+
+    const transcriptWords = (result.chunks || [])
+      .filter(c => c.text && c.text.trim())
+      .map(c => ({
+        word: c.text.trim(),
+        start: c.timestamp[0] ?? 0,
+        end: (c.timestamp[1] ?? c.timestamp[0] ?? 0)
+      }));
+
+    if(transcriptWords.length === 0){
+      log("Non sono riuscito a ottenere timestamp per parola dal modello. Prova con un video più corto o cambia lingua.", "err");
+      btn.disabled = false;
+      return;
+    }
+
+    const normTranscript = transcriptWords.map(w => normWord(w.word));
+    log(`Trascritte ${transcriptWords.length} parole.`, "ok");
+    log("Testo trascritto: " + transcriptWords.map(w => w.word).join(" "));
+    setProgress(84);
+
+    log("Allineo lo script alla trascrizione e cerco le ripetizioni...");
+    const sentences = splitScriptIntoSentences(scriptText);
+    const policy = document.getElementById("takePolicy").value;
+    alignedSegments = [];
+
+    for(const s of sentences){
+      const candidates = findCandidates(s.tokens, transcriptWords, normTranscript);
+      const chosen = pickTake(candidates, policy);
+      alignedSegments.push({ text: s.text, candidates, chosen });
+    }
+    setProgress(100);
+    log("Allineamento completato.", "ok");
+    renderAlignmentTable();
+
+  }catch(err){
+    console.error(err);
+    log("Errore: " + err.message, "err");
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+function fmtTime(t){
+  if(t == null) return "—";
+  const m = Math.floor(t/60), s = (t%60).toFixed(2);
+  return `${m}:${s.padStart(5,"0")}`;
+}
+
+function renderAlignmentTable(){
+  const body = document.getElementById("alignBody");
+  body.innerHTML = "";
+  alignedSegments.forEach((seg, idx) => {
+    const tr = document.createElement("tr");
+
+    const tdIdx = document.createElement("td");
+    tdIdx.textContent = idx + 1;
+
+    const tdSent = document.createElement("td");
+    tdSent.className = "sent";
+    tdSent.textContent = seg.text;
+
+    const tdTake = document.createElement("td");
+    if(seg.candidates.length === 0){
+      tdTake.innerHTML = `<span class="badge bad">non trovato</span>`;
+    } else {
+      const sel = document.createElement("select");
+      seg.candidates.forEach((c, ci) => {
+        const opt = document.createElement("option");
+        opt.value = ci;
+        opt.textContent = `${fmtTime(c.startTime)} → ${fmtTime(c.endTime)}` + (seg.candidates.length > 1 ? `  (take ${ci+1}/${seg.candidates.length})` : "");
+        if(c === seg.chosen) opt.selected = true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener("change", () => { seg.chosen = seg.candidates[sel.value]; });
+      tdTake.appendChild(sel);
+    }
+
+    const tdScore = document.createElement("td");
+    if(seg.chosen){
+      const pct = Math.round(seg.chosen.score * 100);
+      const cls = pct >= 85 ? "good" : (pct >= 65 ? "warn" : "bad");
+      tdScore.innerHTML = `<span class="badge ${cls}">${pct}%</span>`;
+    } else {
+      tdScore.innerHTML = `<span class="badge bad">—</span>`;
+    }
+
+    const tdTime = document.createElement("td");
+    tdTime.className = "time";
+    tdTime.textContent = seg.chosen ? `${(seg.chosen.endTime - seg.chosen.startTime).toFixed(1)}s` : "";
+
+    tr.append(tdIdx, tdSent, tdTake, tdScore, tdTime);
+    body.appendChild(tr);
+  });
+  document.getElementById("alignCard").classList.remove("hidden");
+}
+
+// ---------- Rendering finale con Mediabunny (nessun ffmpeg, nessun Worker) ----------
+document.getElementById("btnRender").addEventListener("click", async () => {
+  const usable = alignedSegments.filter(s => s.chosen);
+  if(usable.length === 0){ log("Nessun segmento valido da montare.", "err"); return; }
+  if(!mediaInput){ log("Ricarica il video e ripeti la trascrizione prima di montare.", "err"); return; }
+
+  const btn = document.getElementById("btnRender");
+  btn.disabled = true;
+  setProgress(0);
+  log("--- Inizio montaggio finale ---");
+
+  try{
+    const PAD = 0.08; // piccolo margine per non tagliare le consonanti
+
+    const videoTrack = await mediaInput.getPrimaryVideoTrack();
+    const audioTrack = await mediaInput.getPrimaryAudioTrack();
+    if(!videoTrack){ log("Nessuna traccia video trovata.", "err"); btn.disabled = false; return; }
+
+    const output = new Output({ format: new Mp4OutputFormat(), target: new BufferTarget() });
+    const videoSource = new VideoSampleSource({ codec: "avc", bitrate: QUALITY_HIGH });
+    output.addVideoTrack(videoSource);
+
+    let audioSource = null;
+    if(audioTrack && await audioTrack.canDecode()){
+      audioSource = new AudioSampleSource({ codec: "aac", bitrate: QUALITY_HIGH });
+      output.addAudioTrack(audioSource);
+    }
+
+    await output.start();
+
+    let cursor = 0;
+    for(let i=0;i<usable.length;i++){
+      const seg = usable[i].chosen;
+      const start = Math.max(0, seg.startTime - PAD);
+      const end = Math.min(mediaDuration, seg.endTime + PAD);
+      log(`Copio segmento ${i+1}/${usable.length} (${(end-start).toFixed(2)}s)...`);
+
+      const vSink = new VideoSampleSink(videoTrack);
+      for await (const sample of vSink.samples(start, end)){
+        sample.setTimestamp(cursor + (sample.timestamp - start));
+        await videoSource.add(sample);
+        sample.close();
+      }
+
+      if(audioSource){
+        const aSink = new AudioSampleSink(audioTrack);
+        for await (const sample of aSink.samples(start, end)){
+          sample.setTimestamp(cursor + (sample.timestamp - start));
+          await audioSource.add(sample);
+          sample.close();
+        }
+      }
+
+      cursor += (end - start);
+      setProgress(5 + ((i+1) / usable.length) * 85);
+    }
+
+    videoSource.close();
+    if(audioSource) audioSource.close();
+
+    log("Finalizzo il file mp4...");
+    await output.finalize();
+    setProgress(97);
+
+    const buffer = output.target.buffer;
+    const blob = new Blob([buffer], { type: "video/mp4" });
+    const url = URL.createObjectURL(blob);
+
+    document.getElementById("resultVideo").src = url;
+    document.getElementById("downloadLink").href = url;
+    document.getElementById("resultCard").classList.remove("hidden");
+    setProgress(100);
+    log("Montaggio completato.", "ok");
+
+  }catch(err){
+    console.error(err);
+    log("Errore durante il montaggio: " + err.message, "err");
+  }finally{
+    btn.disabled = false;
+  }
+});
+
+</script>
+</body>
+</html>
