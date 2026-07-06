@@ -326,6 +326,46 @@ let videoFile = null;
 let mediaInput = null;      // istanza Input (mediabunny) riutilizzata tra trascrizione e rendering
 let mediaDuration = 0;
 let alignedSegments = [];   // { text, candidates, chosen }
+let whisperSamples = null;  // audio mono 16kHz usato per Whisper, riutilizzato per rilevare inizio/fine parlato
+const WHISPER_SR = 16000;
+
+// Rileva l'inizio reale del parlato vicino a centerTime analizzando l'energia
+// dell'audio (i timestamp di Whisper a volte includono un pezzo della pausa
+// prima della prima parola: qui troviamo il punto acustico esatto).
+function frameRMS(samples, startIdx, frameLen){
+  let sum = 0;
+  const end = Math.min(startIdx + frameLen, samples.length);
+  for(let i = startIdx; i < end; i++) sum += samples[i] * samples[i];
+  return Math.sqrt(sum / Math.max(1, end - startIdx));
+}
+
+const VAD_THRESHOLD = 0.02; // soglia di energia sotto cui si considera "silenzio" — regolabile
+
+function findSpeechOnset(samples, sr, centerTime, searchBack = 0.15, searchFwd = 0.35){
+  if(!samples) return centerTime;
+  const frameLen = Math.round(sr * 0.01); // finestra da 10ms
+  const startSample = Math.max(0, Math.round((centerTime - searchBack) * sr));
+  const endSample = Math.min(samples.length - frameLen, Math.round((centerTime + searchFwd) * sr));
+  const step = Math.max(1, Math.floor(frameLen / 2));
+  for(let idx = startSample; idx <= endSample; idx += step){
+    if(frameRMS(samples, idx, frameLen) >= VAD_THRESHOLD) return idx / sr;
+  }
+  return centerTime; // fallback: nessun punto sopra soglia trovato
+}
+
+function findSpeechOffset(samples, sr, centerTime, searchBack = 0.35, searchFwd = 0.15){
+  if(!samples) return centerTime;
+  const frameLen = Math.round(sr * 0.01);
+  const startSample = Math.max(0, Math.round((centerTime - searchBack) * sr));
+  const endSample = Math.min(samples.length - frameLen, Math.round((centerTime + searchFwd) * sr));
+  const step = Math.max(1, Math.floor(frameLen / 2));
+  let lastLoud = null;
+  for(let idx = startSample; idx <= endSample; idx += step){
+    if(frameRMS(samples, idx, frameLen) >= VAD_THRESHOLD) lastLoud = idx;
+  }
+  if(lastLoud === null) return centerTime; // fallback
+  return (lastLoud + frameLen) / sr;
+}
 
 document.getElementById("videoInput").addEventListener("change", e => {
   videoFile = e.target.files[0] || null;
@@ -388,6 +428,7 @@ document.getElementById("btnTranscribe").addEventListener("click", async () => {
     if(Math.round(origSampleRate) !== 16000){
       samples = resampleLinear(fullMono, origSampleRate, 16000);
     }
+    whisperSamples = samples; // riutilizzato in fase di montaggio per rifinire inizio/fine parlato
     setProgress(28);
 
     log("Carico il modello Whisper (prima volta: qualche minuto di download)...");
@@ -545,8 +586,10 @@ document.getElementById("btnRender").addEventListener("click", async () => {
     let cursor = 0;
     for(let i=0;i<usable.length;i++){
       const seg = usable[i].chosen;
-      const start = Math.max(0, seg.startTime - PAD);
-      const end = Math.min(mediaDuration, seg.endTime + PAD);
+      const onset = findSpeechOnset(whisperSamples, WHISPER_SR, seg.startTime);
+      const offset = findSpeechOffset(whisperSamples, WHISPER_SR, seg.endTime);
+      const start = Math.max(0, onset - PAD);
+      const end = Math.min(mediaDuration, offset + PAD);
       log(`Copio segmento ${i+1}/${usable.length} (${(end-start).toFixed(2)}s)...`);
 
       const vSink = new VideoSampleSink(videoTrack);
