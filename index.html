@@ -339,32 +339,78 @@ function frameRMS(samples, startIdx, frameLen){
   return Math.sqrt(sum / Math.max(1, end - startIdx));
 }
 
-const VAD_THRESHOLD = 0.02; // soglia di energia sotto cui si considera "silenzio" — regolabile
+const VAD_THRESHOLD_MIN = 0.02;  // soglia minima di sicurezza, usata solo se la stima del rumore fallisce
+const VAD_FRAME_S = 0.005;       // finestra da 5ms: risoluzione fine, quasi al millisecondo
+const MIN_VOICED_FRAMES = 3;     // ~15ms di energia sostenuta per confermare che è parlato vero e non un click/respiro
+const MAX_EDGE_SILENCE = 0.005;  // tolleranza massima di pausa residua ai bordi del taglio: 5ms, come richiesto
 
-function findSpeechOnset(samples, sr, centerTime, searchBack = 0.15, searchFwd = 0.35){
-  if(!samples) return centerTime;
-  const frameLen = Math.round(sr * 0.01); // finestra da 10ms
-  const startSample = Math.max(0, Math.round((centerTime - searchBack) * sr));
-  const endSample = Math.min(samples.length - frameLen, Math.round((centerTime + searchFwd) * sr));
-  const step = Math.max(1, Math.floor(frameLen / 2));
-  for(let idx = startSample; idx <= endSample; idx += step){
-    if(frameRMS(samples, idx, frameLen) >= VAD_THRESHOLD) return idx / sr;
+// Stima il rumore di fondo attorno a centerTime guardando i frame più "quieti"
+// della zona: la soglia VAD diventa così adattiva invece che un numero fisso,
+// il che evita di scambiare respiri/rumore ambientale per inizio/fine parola
+// (o, all'opposto, di perdere parole pronunciate piano).
+function estimateNoiseFloor(samples, sr, centerTime, span = 0.5){
+  const frameLen = Math.round(sr * VAD_FRAME_S);
+  const startSample = Math.max(0, Math.round((centerTime - span) * sr));
+  const endSample = Math.min(samples.length - frameLen, Math.round((centerTime + span) * sr));
+  const energies = [];
+  for(let idx = startSample; idx <= endSample; idx += frameLen){
+    energies.push(frameRMS(samples, idx, frameLen));
   }
-  return centerTime; // fallback: nessun punto sopra soglia trovato
+  if(energies.length === 0) return VAD_THRESHOLD_MIN;
+  energies.sort((a, b) => a - b);
+  const floor = energies[Math.floor(energies.length * 0.15)]; // 15° percentile ≈ rumore di fondo tipico
+  return Math.max(floor * 3, VAD_THRESHOLD_MIN * 0.5);
 }
 
-function findSpeechOffset(samples, sr, centerTime, searchBack = 0.35, searchFwd = 0.15){
+// Trova l'inizio reale del parlato: richiede energia sostenuta per più frame
+// consecutivi (non un solo picco isolato) e poi torna indietro al primo di
+// quei frame, così il taglio parte esattamente dove comincia la parola,
+// lasciando al massimo MAX_EDGE_SILENCE di pausa prima.
+function findSpeechOnset(samples, sr, centerTime, searchBack = 0.15, searchFwd = 0.35){
   if(!samples) return centerTime;
-  const frameLen = Math.round(sr * 0.01);
+  const frameLen = Math.round(sr * VAD_FRAME_S);
+  const threshold = estimateNoiseFloor(samples, sr, centerTime);
   const startSample = Math.max(0, Math.round((centerTime - searchBack) * sr));
   const endSample = Math.min(samples.length - frameLen, Math.round((centerTime + searchFwd) * sr));
-  const step = Math.max(1, Math.floor(frameLen / 2));
-  let lastLoud = null;
-  for(let idx = startSample; idx <= endSample; idx += step){
-    if(frameRMS(samples, idx, frameLen) >= VAD_THRESHOLD) lastLoud = idx;
+  let run = 0;
+  for(let idx = startSample; idx <= endSample; idx += frameLen){
+    if(frameRMS(samples, idx, frameLen) >= threshold){
+      run++;
+      if(run >= MIN_VOICED_FRAMES){
+        const onsetIdx = idx - (run - 1) * frameLen; // primo frame della sequenza confermata
+        return Math.max(0, onsetIdx / sr - MAX_EDGE_SILENCE);
+      }
+    } else {
+      run = 0; // rumore isolato/breve: resetta, non conta come inizio parlato
+    }
   }
-  if(lastLoud === null) return centerTime; // fallback
-  return (lastLoud + frameLen) / sr;
+  return centerTime; // fallback: nessun parlato sostenuto trovato
+}
+
+// Trova la fine reale del parlato scandendo all'indietro dal bordo della
+// finestra: richiede energia sostenuta per più frame consecutivi (per non
+// tagliare via una coda di parola più debole) e si ferma al primo punto in
+// cui il parlato sostenuto finisce, con al massimo MAX_EDGE_SILENCE di coda.
+function findSpeechOffset(samples, sr, centerTime, searchBack = 0.35, searchFwd = 0.15){
+  if(!samples) return centerTime;
+  const frameLen = Math.round(sr * VAD_FRAME_S);
+  const threshold = estimateNoiseFloor(samples, sr, centerTime);
+  const startSample = Math.max(0, Math.round((centerTime - searchBack) * sr));
+  const endSample = Math.min(samples.length - frameLen, Math.round((centerTime + searchFwd) * sr));
+  let run = 0;
+  let lastVoicedEnd = null;
+  for(let idx = endSample; idx >= startSample; idx -= frameLen){
+    if(frameRMS(samples, idx, frameLen) >= threshold){
+      run++;
+      if(run >= MIN_VOICED_FRAMES && lastVoicedEnd === null){
+        lastVoicedEnd = idx + frameLen; // fine confermata del parlato (scandendo all'indietro, è il primo trovato)
+      }
+    } else {
+      run = 0;
+    }
+  }
+  if(lastVoicedEnd === null) return centerTime; // fallback
+  return Math.min(samples.length / sr, lastVoicedEnd / sr + MAX_EDGE_SILENCE);
 }
 
 document.getElementById("videoInput").addEventListener("change", e => {
@@ -565,7 +611,7 @@ document.getElementById("btnRender").addEventListener("click", async () => {
   log("--- Inizio montaggio finale ---");
 
   try{
-    const PAD = 0.002; // massimo 2ms di margine: tagli netti, niente pause prima della parola
+    const PAD = 0; // il margine (max 5ms) è già applicato dentro findSpeechOnset/Offset, qui non serve altro
 
     const videoTrack = await mediaInput.getPrimaryVideoTrack();
     const audioTrack = await mediaInput.getPrimaryAudioTrack();
