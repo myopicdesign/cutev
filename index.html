@@ -327,6 +327,7 @@ let mediaInput = null;      // istanza Input (mediabunny) riutilizzata tra trasc
 let mediaDuration = 0;
 let alignedSegments = [];   // { text, candidates, chosen }
 let whisperSamples = null;  // audio mono 16kHz usato per Whisper, riutilizzato per rilevare inizio/fine parlato
+let transcriptWordsGlobal = []; // parole trascritte con timestamp, riusate in fase di render per conoscere i confini delle parole vicine
 const WHISPER_SR = 16000;
 
 // Rileva l'inizio reale del parlato vicino a centerTime analizzando l'energia
@@ -362,16 +363,19 @@ function estimateNoiseFloor(samples, sr, centerTime, span = 0.5){
   return Math.max(floor * 3, VAD_THRESHOLD_MIN * 0.5);
 }
 
-// Trova l'inizio reale del parlato: richiede energia sostenuta per più frame
-// consecutivi (non un solo picco isolato) e poi torna indietro al primo di
-// quei frame, così il taglio parte esattamente dove comincia la parola,
+// Trova l'inizio reale del parlato cercando in tutto l'intervallo [leftBound, rightBound]
+// (i confini reali delle parole vicine, non una finestra fissa attorno al timestamp
+// di Whisper: quel timestamp può essere sbagliato anche di molto, soprattutto sulla
+// prima parola dopo un silenzio, quindi non ci si può fidare di una finestra stretta
+// attorno ad esso). Richiede energia sostenuta per più frame consecutivi e poi torna
+// indietro al primo di quei frame: il taglio parte esattamente dove comincia la parola,
 // lasciando al massimo MAX_EDGE_SILENCE di pausa prima.
-function findSpeechOnset(samples, sr, centerTime, searchBack = 0.15, searchFwd = 0.35){
-  if(!samples) return centerTime;
+function findSpeechOnset(samples, sr, targetTime, leftBound, rightBound){
+  if(!samples) return targetTime;
   const frameLen = Math.round(sr * VAD_FRAME_S);
-  const threshold = estimateNoiseFloor(samples, sr, centerTime);
-  const startSample = Math.max(0, Math.round((centerTime - searchBack) * sr));
-  const endSample = Math.min(samples.length - frameLen, Math.round((centerTime + searchFwd) * sr));
+  const threshold = estimateNoiseFloor(samples, sr, targetTime);
+  const startSample = Math.max(0, Math.round(leftBound * sr));
+  const endSample = Math.min(samples.length - frameLen, Math.round(rightBound * sr));
   let run = 0;
   for(let idx = startSample; idx <= endSample; idx += frameLen){
     if(frameRMS(samples, idx, frameLen) >= threshold){
@@ -384,19 +388,19 @@ function findSpeechOnset(samples, sr, centerTime, searchBack = 0.15, searchFwd =
       run = 0; // rumore isolato/breve: resetta, non conta come inizio parlato
     }
   }
-  return centerTime; // fallback: nessun parlato sostenuto trovato
+  return targetTime; // fallback: nessun parlato sostenuto trovato in tutto l'intervallo
 }
 
-// Trova la fine reale del parlato scandendo all'indietro dal bordo della
-// finestra: richiede energia sostenuta per più frame consecutivi (per non
-// tagliare via una coda di parola più debole) e si ferma al primo punto in
+// Trova la fine reale del parlato cercando in tutto l'intervallo [leftBound, rightBound]
+// (i confini reali delle parole vicine), scandendo all'indietro dal bordo destro.
+// Richiede energia sostenuta per più frame consecutivi e si ferma al primo punto in
 // cui il parlato sostenuto finisce, con al massimo MAX_EDGE_SILENCE di coda.
-function findSpeechOffset(samples, sr, centerTime, searchBack = 0.35, searchFwd = 0.15){
-  if(!samples) return centerTime;
+function findSpeechOffset(samples, sr, targetTime, leftBound, rightBound){
+  if(!samples) return targetTime;
   const frameLen = Math.round(sr * VAD_FRAME_S);
-  const threshold = estimateNoiseFloor(samples, sr, centerTime);
-  const startSample = Math.max(0, Math.round((centerTime - searchBack) * sr));
-  const endSample = Math.min(samples.length - frameLen, Math.round((centerTime + searchFwd) * sr));
+  const threshold = estimateNoiseFloor(samples, sr, targetTime);
+  const startSample = Math.max(0, Math.round(leftBound * sr));
+  const endSample = Math.min(samples.length - frameLen, Math.round(rightBound * sr));
   let run = 0;
   let lastVoicedEnd = null;
   for(let idx = endSample; idx >= startSample; idx -= frameLen){
@@ -409,7 +413,7 @@ function findSpeechOffset(samples, sr, centerTime, searchBack = 0.35, searchFwd 
       run = 0;
     }
   }
-  if(lastVoicedEnd === null) return centerTime; // fallback
+  if(lastVoicedEnd === null) return targetTime; // fallback: nessun parlato sostenuto trovato in tutto l'intervallo
   return Math.min(samples.length / sr, lastVoicedEnd / sr + MAX_EDGE_SILENCE);
 }
 
@@ -516,6 +520,7 @@ document.getElementById("btnTranscribe").addEventListener("click", async () => {
     }
 
     const normTranscript = transcriptWords.map(w => normWord(w.word));
+    transcriptWordsGlobal = transcriptWords;
     log(`Trascritte ${transcriptWords.length} parole.`, "ok");
     log("Testo trascritto: " + transcriptWords.map(w => w.word).join(" "));
     setProgress(84);
@@ -632,8 +637,28 @@ document.getElementById("btnRender").addEventListener("click", async () => {
     let cursor = 0;
     for(let i=0;i<usable.length;i++){
       const seg = usable[i].chosen;
-      const onset = findSpeechOnset(whisperSamples, WHISPER_SR, seg.startTime);
-      const offset = findSpeechOffset(whisperSamples, WHISPER_SR, seg.endTime);
+
+      // Confine sinistro per l'onset: fine della parola precedente nella trascrizione
+      // (garanzia reale di "qui non c'è ancora parlato"), oppure, se è la primissima
+      // parola del video, si scende fino all'inizio assoluto: meglio scansionare di più
+      // che rischiare di tagliare fuori l'inizio vero per colpa di un timestamp Whisper sbagliato.
+      const onsetLeftBound = seg.startIdx > 0
+        ? transcriptWordsGlobal[seg.startIdx - 1].end
+        : 0;
+      // Confine destro per l'onset: non oltre la fine dichiarata della parola stessa
+      // (l'inizio del parlato non può essere dopo la fine della parola).
+      const onsetRightBound = Math.max(onsetLeftBound + 0.02, seg.endTime);
+      const onset = findSpeechOnset(whisperSamples, WHISPER_SR, seg.startTime, onsetLeftBound, onsetRightBound);
+
+      // Confine destro per l'offset: inizio della parola successiva nella trascrizione,
+      // oppure fine del video se è l'ultima parola.
+      const offsetRightBound = seg.endIdx < transcriptWordsGlobal.length - 1
+        ? transcriptWordsGlobal[seg.endIdx + 1].start
+        : mediaDuration;
+      // Confine sinistro per l'offset: non prima dell'onset appena trovato.
+      const offsetLeftBound = Math.min(onset, seg.startTime);
+      const offset = findSpeechOffset(whisperSamples, WHISPER_SR, seg.endTime, offsetLeftBound, Math.max(offsetLeftBound + 0.02, offsetRightBound));
+
       const start = Math.max(0, onset - PAD);
       const end = Math.min(mediaDuration, offset + PAD);
       log(`Copio segmento ${i+1}/${usable.length} (${(end-start).toFixed(2)}s)...`);
