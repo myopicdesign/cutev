@@ -671,7 +671,12 @@ document.getElementById("btnRender").addEventListener("click", async () => {
 
         const vSink = new VideoSampleSink(videoTrack);
         for await (const sample of vSink.samples(start, end)){
-          sample.setTimestamp(cursor + (sample.timestamp - start));
+          // Il sink può restituire il primo campione con timestamp leggermente
+          // precedente a "start" (allineamento a keyframe): l'offset relativo va
+          // sempre bloccato a un minimo di 0, altrimenti su un'isola in cima al
+          // video (cursor=0) si otterrebbe un timestamp negativo e il muxer va in errore.
+          const relTs = Math.max(0, sample.timestamp - start);
+          sample.setTimestamp(cursor + relTs);
           await videoSource.add(sample);
           sample.close();
         }
@@ -679,7 +684,8 @@ document.getElementById("btnRender").addEventListener("click", async () => {
         if(audioSource){
           const aSink = new AudioSampleSink(audioTrack);
           for await (const sample of aSink.samples(start, end)){
-            sample.setTimestamp(cursor + (sample.timestamp - start));
+            const relTs = Math.max(0, sample.timestamp - start);
+            sample.setTimestamp(cursor + relTs);
             await audioSource.add(sample);
             sample.close();
           }
