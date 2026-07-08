@@ -165,6 +165,10 @@
       </thead>
       <tbody id="alignBody"></tbody>
     </table>
+    <label class="field" style="margin-top:14px;">
+      <span>Tolleranza pause: <b id="tolValueLabel">40ms</b> — pause più brevi di questo valore NON vengono tagliate (restano nel video, taglio più morbido)</span>
+      <input type="range" id="tolSlider" min="0" max="150" step="5" value="40" style="width:100%;">
+    </label>
     <div style="margin-top:18px;">
       <button id="btnRender">Genera video montato</button>
     </div>
@@ -364,7 +368,10 @@ function estimateNoiseFloor(samples, sr, centerTime, span = 0.5){
 }
 
 const DEEP_SILENCE_FACTOR = 0.35; // se l'energia scende sotto questa frazione della soglia vocale, è silenzio vero (non solo un calo di intonazione)
-const MIN_GAP_FRAMES = 4;         // ~20ms di silenzio profondo sostenuto per validare un taglio: evita di scattare su un singolo frame debole
+let pauseToleranceMs = 40; // ms di pausa tollerati senza tagliare — regolabile dallo slider in UI
+function getMinGapFrames(){
+  return Math.max(1, Math.round((pauseToleranceMs / 1000) / VAD_FRAME_S)); // converte la tolleranza in numero di frame da 5ms
+}
 
 // Scansiona tutto [leftBound, rightBound] (i confini reali delle parole vicine)
 // e restituisce l'elenco delle "isole" di parlato vero. Qualsiasi tratto in cui
@@ -374,6 +381,7 @@ const MIN_GAP_FRAMES = 4;         // ~20ms di silenzio profondo sostenuto per va
 function detectVoiceIslands(samples, sr, leftBound, rightBound){
   if(!samples || rightBound <= leftBound) return [{ start: leftBound, end: rightBound }];
   const frameLen = Math.round(sr * VAD_FRAME_S);
+  const minGapFrames = getMinGapFrames();
   const centerTime = (leftBound + rightBound) / 2;
   const speechThreshold = estimateNoiseFloor(samples, sr, centerTime);
   const deepSilenceThreshold = speechThreshold * DEEP_SILENCE_FACTOR;
@@ -413,7 +421,7 @@ function detectVoiceIslands(samples, sr, leftBound, rightBound){
         silentRun = 0;
       } else {
         silentRun++;
-        if(silentRun >= MIN_GAP_FRAMES){
+        if(silentRun >= minGapFrames){
           closeIsland(); // silenzio vero e sostenuto: chiudo qui l'isola vocale
           inSpeech = false;
           voicedRun = 0;
@@ -616,6 +624,13 @@ function renderAlignmentTable(){
 }
 
 // ---------- Rendering finale con Mediabunny (nessun ffmpeg, nessun Worker) ----------
+const tolSlider = document.getElementById("tolSlider");
+const tolValueLabel = document.getElementById("tolValueLabel");
+tolSlider.addEventListener("input", () => {
+  pauseToleranceMs = Number(tolSlider.value);
+  tolValueLabel.textContent = `${pauseToleranceMs}ms`;
+});
+
 document.getElementById("btnRender").addEventListener("click", async () => {
   const usable = alignedSegments.filter(s => s.chosen);
   if(usable.length === 0){ log("Nessun segmento valido da montare.", "err"); return; }
@@ -649,15 +664,24 @@ document.getElementById("btnRender").addEventListener("click", async () => {
     for(let i=0;i<usable.length;i++){
       const seg = usable[i].chosen;
 
+      // Margine di sicurezza quando non c'è una parola vicina nella trascrizione
+      // a fare da confine naturale: NON si deve mai arrivare a spazzare tutto il
+      // resto del video (0 / mediaDuration), altrimenti qualunque altro parlato
+      // presente altrove nella clip (es. un secondo ciak/ripetizione più avanti,
+      // non trascritto come parola nello script) verrebbe incluso per errore nel
+      // montaggio — è esattamente quello che causava le "ripetizioni" viste.
+      const SAFETY_MARGIN_S = 1.5;
+
       // Confine sinistro: fine della parola precedente nella trascrizione, oppure
-      // l'inizio assoluto del video se è la primissima parola.
+      // un margine di sicurezza prima dell'inizio dichiarato della parola stessa.
       const leftBound = seg.startIdx > 0
         ? transcriptWordsGlobal[seg.startIdx - 1].end
-        : 0;
-      // Confine destro: inizio della parola successiva, oppure fine video se è l'ultima.
+        : Math.max(0, seg.startTime - SAFETY_MARGIN_S);
+      // Confine destro: inizio della parola successiva, oppure un margine di
+      // sicurezza dopo la fine dichiarata della parola stessa.
       const rightBound = seg.endIdx < transcriptWordsGlobal.length - 1
         ? transcriptWordsGlobal[seg.endIdx + 1].start
-        : mediaDuration;
+        : Math.min(mediaDuration, seg.endTime + SAFETY_MARGIN_S);
 
       // Isole di parlato vero dentro l'intervallo: qualunque silenzio profondo e
       // sostenuto (anche in mezzo alla frase) viene escluso, non solo testa/coda.
