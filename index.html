@@ -363,58 +363,69 @@ function estimateNoiseFloor(samples, sr, centerTime, span = 0.5){
   return Math.max(floor * 3, VAD_THRESHOLD_MIN * 0.5);
 }
 
-// Trova l'inizio reale del parlato cercando in tutto l'intervallo [leftBound, rightBound]
-// (i confini reali delle parole vicine, non una finestra fissa attorno al timestamp
-// di Whisper: quel timestamp può essere sbagliato anche di molto, soprattutto sulla
-// prima parola dopo un silenzio, quindi non ci si può fidare di una finestra stretta
-// attorno ad esso). Richiede energia sostenuta per più frame consecutivi e poi torna
-// indietro al primo di quei frame: il taglio parte esattamente dove comincia la parola,
-// lasciando al massimo MAX_EDGE_SILENCE di pausa prima.
-function findSpeechOnset(samples, sr, targetTime, leftBound, rightBound){
-  if(!samples) return targetTime;
-  const frameLen = Math.round(sr * VAD_FRAME_S);
-  const threshold = estimateNoiseFloor(samples, sr, targetTime);
-  const startSample = Math.max(0, Math.round(leftBound * sr));
-  const endSample = Math.min(samples.length - frameLen, Math.round(rightBound * sr));
-  let run = 0;
-  for(let idx = startSample; idx <= endSample; idx += frameLen){
-    if(frameRMS(samples, idx, frameLen) >= threshold){
-      run++;
-      if(run >= MIN_VOICED_FRAMES){
-        const onsetIdx = idx - (run - 1) * frameLen; // primo frame della sequenza confermata
-        return Math.max(0, onsetIdx / sr - MAX_EDGE_SILENCE);
-      }
-    } else {
-      run = 0; // rumore isolato/breve: resetta, non conta come inizio parlato
-    }
-  }
-  return targetTime; // fallback: nessun parlato sostenuto trovato in tutto l'intervallo
-}
+const DEEP_SILENCE_FACTOR = 0.35; // se l'energia scende sotto questa frazione della soglia vocale, è silenzio vero (non solo un calo di intonazione)
+const MIN_GAP_FRAMES = 4;         // ~20ms di silenzio profondo sostenuto per validare un taglio: evita di scattare su un singolo frame debole
 
-// Trova la fine reale del parlato cercando in tutto l'intervallo [leftBound, rightBound]
-// (i confini reali delle parole vicine), scandendo all'indietro dal bordo destro.
-// Richiede energia sostenuta per più frame consecutivi e si ferma al primo punto in
-// cui il parlato sostenuto finisce, con al massimo MAX_EDGE_SILENCE di coda.
-function findSpeechOffset(samples, sr, targetTime, leftBound, rightBound){
-  if(!samples) return targetTime;
+// Scansiona tutto [leftBound, rightBound] (i confini reali delle parole vicine)
+// e restituisce l'elenco delle "isole" di parlato vero. Qualsiasi tratto in cui
+// il livello crolla molto sotto la soglia vocale, per un tempo sostenuto, viene
+// trattato come silenzio da scartare — anche se è in mezzo alla frase, non solo
+// in testa o in coda. Risultato: micro-tagli, niente pause nel montaggio finale.
+function detectVoiceIslands(samples, sr, leftBound, rightBound){
+  if(!samples || rightBound <= leftBound) return [{ start: leftBound, end: rightBound }];
   const frameLen = Math.round(sr * VAD_FRAME_S);
-  const threshold = estimateNoiseFloor(samples, sr, targetTime);
+  const centerTime = (leftBound + rightBound) / 2;
+  const speechThreshold = estimateNoiseFloor(samples, sr, centerTime);
+  const deepSilenceThreshold = speechThreshold * DEEP_SILENCE_FACTOR;
   const startSample = Math.max(0, Math.round(leftBound * sr));
   const endSample = Math.min(samples.length - frameLen, Math.round(rightBound * sr));
-  let run = 0;
-  let lastVoicedEnd = null;
-  for(let idx = endSample; idx >= startSample; idx -= frameLen){
-    if(frameRMS(samples, idx, frameLen) >= threshold){
-      run++;
-      if(run >= MIN_VOICED_FRAMES && lastVoicedEnd === null){
-        lastVoicedEnd = idx + frameLen; // fine confermata del parlato (scandendo all'indietro, è il primo trovato)
+
+  const islands = [];
+  let inSpeech = false;
+  let voicedRun = 0;
+  let silentRun = 0;
+  let curStartIdx = null;
+  let lastVoicedIdx = null;
+
+  const closeIsland = () => {
+    const s = Math.max(leftBound, curStartIdx / sr - MAX_EDGE_SILENCE);
+    const e = Math.min(rightBound, (lastVoicedIdx + frameLen) / sr + MAX_EDGE_SILENCE);
+    if(e > s) islands.push({ start: s, end: e });
+  };
+
+  for(let idx = startSample; idx <= endSample; idx += frameLen){
+    const rms = frameRMS(samples, idx, frameLen);
+    if(!inSpeech){
+      if(rms >= speechThreshold){
+        voicedRun++;
+        if(voicedRun >= MIN_VOICED_FRAMES){
+          inSpeech = true;
+          curStartIdx = idx - (voicedRun - 1) * frameLen;
+          lastVoicedIdx = idx;
+          silentRun = 0;
+        }
+      } else {
+        voicedRun = 0;
       }
     } else {
-      run = 0;
+      if(rms >= deepSilenceThreshold){
+        lastVoicedIdx = idx; // tollera cali di intonazione/consonanti sorde: resta dentro la parola
+        silentRun = 0;
+      } else {
+        silentRun++;
+        if(silentRun >= MIN_GAP_FRAMES){
+          closeIsland(); // silenzio vero e sostenuto: chiudo qui l'isola vocale
+          inSpeech = false;
+          voicedRun = 0;
+          curStartIdx = null;
+        }
+      }
     }
   }
-  if(lastVoicedEnd === null) return targetTime; // fallback: nessun parlato sostenuto trovato in tutto l'intervallo
-  return Math.min(samples.length / sr, lastVoicedEnd / sr + MAX_EDGE_SILENCE);
+  if(inSpeech && curStartIdx !== null) closeIsland();
+
+  if(islands.length === 0) islands.push({ start: leftBound, end: rightBound }); // fallback: nessun parlato rilevato
+  return islands;
 }
 
 document.getElementById("videoInput").addEventListener("change", e => {
@@ -616,7 +627,7 @@ document.getElementById("btnRender").addEventListener("click", async () => {
   log("--- Inizio montaggio finale ---");
 
   try{
-    const PAD = 0; // il margine (max 5ms) è già applicato dentro findSpeechOnset/Offset, qui non serve altro
+    const PAD = 0; // il margine (max 5ms) è già applicato dentro detectVoiceIslands, qui non serve altro
 
     const videoTrack = await mediaInput.getPrimaryVideoTrack();
     const audioTrack = await mediaInput.getPrimaryAudioTrack();
@@ -638,50 +649,47 @@ document.getElementById("btnRender").addEventListener("click", async () => {
     for(let i=0;i<usable.length;i++){
       const seg = usable[i].chosen;
 
-      // Confine sinistro per l'onset: fine della parola precedente nella trascrizione
-      // (garanzia reale di "qui non c'è ancora parlato"), oppure, se è la primissima
-      // parola del video, si scende fino all'inizio assoluto: meglio scansionare di più
-      // che rischiare di tagliare fuori l'inizio vero per colpa di un timestamp Whisper sbagliato.
-      const onsetLeftBound = seg.startIdx > 0
+      // Confine sinistro: fine della parola precedente nella trascrizione, oppure
+      // l'inizio assoluto del video se è la primissima parola.
+      const leftBound = seg.startIdx > 0
         ? transcriptWordsGlobal[seg.startIdx - 1].end
         : 0;
-      // Confine destro per l'onset: non oltre la fine dichiarata della parola stessa
-      // (l'inizio del parlato non può essere dopo la fine della parola).
-      const onsetRightBound = Math.max(onsetLeftBound + 0.02, seg.endTime);
-      const onset = findSpeechOnset(whisperSamples, WHISPER_SR, seg.startTime, onsetLeftBound, onsetRightBound);
-
-      // Confine destro per l'offset: inizio della parola successiva nella trascrizione,
-      // oppure fine del video se è l'ultima parola.
-      const offsetRightBound = seg.endIdx < transcriptWordsGlobal.length - 1
+      // Confine destro: inizio della parola successiva, oppure fine video se è l'ultima.
+      const rightBound = seg.endIdx < transcriptWordsGlobal.length - 1
         ? transcriptWordsGlobal[seg.endIdx + 1].start
         : mediaDuration;
-      // Confine sinistro per l'offset: non prima dell'onset appena trovato.
-      const offsetLeftBound = Math.min(onset, seg.startTime);
-      const offset = findSpeechOffset(whisperSamples, WHISPER_SR, seg.endTime, offsetLeftBound, Math.max(offsetLeftBound + 0.02, offsetRightBound));
 
-      const start = Math.max(0, onset - PAD);
-      const end = Math.min(mediaDuration, offset + PAD);
-      log(`Copio segmento ${i+1}/${usable.length} (${(end-start).toFixed(2)}s)...`);
+      // Isole di parlato vero dentro l'intervallo: qualunque silenzio profondo e
+      // sostenuto (anche in mezzo alla frase) viene escluso, non solo testa/coda.
+      const islands = detectVoiceIslands(whisperSamples, WHISPER_SR, leftBound, rightBound);
 
-      const vSink = new VideoSampleSink(videoTrack);
-      for await (const sample of vSink.samples(start, end)){
-        sample.setTimestamp(cursor + (sample.timestamp - start));
-        await videoSource.add(sample);
-        sample.close();
-      }
+      for(let j=0;j<islands.length;j++){
+        const start = Math.max(0, islands[j].start - PAD);
+        const end = Math.min(mediaDuration, islands[j].end + PAD);
+        if(end <= start) continue;
+        log(`Copio segmento ${i+1}/${usable.length}, isola ${j+1}/${islands.length} (${(end-start).toFixed(2)}s)...`);
 
-      if(audioSource){
-        const aSink = new AudioSampleSink(audioTrack);
-        for await (const sample of aSink.samples(start, end)){
+        const vSink = new VideoSampleSink(videoTrack);
+        for await (const sample of vSink.samples(start, end)){
           sample.setTimestamp(cursor + (sample.timestamp - start));
-          await audioSource.add(sample);
+          await videoSource.add(sample);
           sample.close();
         }
-      }
 
-      cursor += (end - start);
+        if(audioSource){
+          const aSink = new AudioSampleSink(audioTrack);
+          for await (const sample of aSink.samples(start, end)){
+            sample.setTimestamp(cursor + (sample.timestamp - start));
+            await audioSource.add(sample);
+            sample.close();
+          }
+        }
+
+        cursor += (end - start);
+      }
       setProgress(5 + ((i+1) / usable.length) * 85);
     }
+
 
     videoSource.close();
     if(audioSource) audioSource.close();
