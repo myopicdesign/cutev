@@ -1,751 +1,1036 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="it" data-theme="dark">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ScriptCut — Montaggio automatico da script</title>
+<title>AttentionScript — Script builder narrativo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root{
-    --bg: #0e1013;
-    --panel: #171a1f;
-    --panel-2: #1e2228;
-    --line: #2a2f37;
-    --text: #e8e6e1;
-    --text-dim: #9a9fa8;
-    --accent: #4fd1a5;
-    --accent-dim: #2c6b57;
-    --warn: #e0a458;
-    --danger: #e0685f;
-    --mono: "SF Mono", "JetBrains Mono", Consolas, monospace;
+  :root[data-theme="dark"]{
+    --bg:#17171a;
+    --bg-viewport:#141416;
+    --dot:rgba(255,255,255,0.09);
+    --surface:#212124;
+    --surface-2:#26262a;
+    --surface-3:#2c2c31;
+    --border:#323236;
+    --border-soft:#2a2a2e;
+    --text:#f2f2f4;
+    --text-dim:#9a9aa3;
+    --text-faint:#68686f;
+    --accent:#a78bfa;
+    --accent-2:#f472b6;
+    --port:#7d7d85;
+    --port-active:#f472b6;
+    --danger:#f2708a;
+    --shadow:0 10px 30px rgba(0,0,0,.45);
+    --shadow-soft:0 2px 10px rgba(0,0,0,.3);
   }
+  :root[data-theme="light"]{
+    --bg:#f2f2f4;
+    --bg-viewport:#eeeef1;
+    --dot:rgba(20,20,24,0.10);
+    --surface:#ffffff;
+    --surface-2:#fbfbfc;
+    --surface-3:#f2f2f4;
+    --border:#e2e2e6;
+    --border-soft:#ececef;
+    --text:#1b1b1e;
+    --text-dim:#6b6b72;
+    --text-faint:#a4a4aa;
+    --accent:#7c3aed;
+    --accent-2:#db2777;
+    --port:#b7b7bd;
+    --port-active:#db2777;
+    --danger:#d6365a;
+    --shadow:0 10px 30px rgba(20,20,30,.10);
+    --shadow-soft:0 2px 10px rgba(20,20,30,.06);
+  }
+
   *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
   body{
-    margin:0; background:var(--bg); color:var(--text);
-    font-family: -apple-system, "Segoe UI", Inter, sans-serif;
-    line-height:1.5;
+    font-family:'Inter',sans-serif;
+    background:var(--bg);
+    color:var(--text);
+    overflow:hidden;
+    -webkit-font-smoothing:antialiased;
   }
-  header{
-    padding: 28px 32px 18px; border-bottom:1px solid var(--line);
+  #app{display:flex;flex-direction:column;height:100vh;width:100vw;}
+
+  /* ---------- Toolbar ---------- */
+  .toolbar{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 22px;
+    background:var(--bg);
+    border-bottom:1px solid var(--border-soft);
+    z-index:20;
+    flex-shrink:0;
   }
-  header h1{
-    margin:0; font-size: 22px; letter-spacing:-0.02em; font-weight:700;
+  .brand{display:flex;align-items:center;gap:10px;}
+  .brand-mark{
+    width:26px;height:26px;border-radius:8px;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2));
+    display:flex;align-items:center;justify-content:center;
+    flex-shrink:0;
   }
-  header h1 span{color:var(--accent);}
-  header p{margin:6px 0 0; color:var(--text-dim); font-size:14px;}
-  main{
-    max-width: 980px; margin: 0 auto; padding: 28px 24px 80px;
-    display:flex; flex-direction:column; gap:20px;
+  .brand-mark svg{width:14px;height:14px;}
+  .brand-name{
+    font-family:'Space Grotesk',sans-serif;
+    font-size:17px;font-weight:600;letter-spacing:-0.01em;
   }
-  .card{
-    background:var(--panel); border:1px solid var(--line); border-radius:10px;
-    padding:20px 22px;
+  .brand-name em{
+    font-style:normal;font-weight:700;
+    background:linear-gradient(135deg,var(--accent),var(--accent-2));
+    -webkit-background-clip:text;background-clip:text;color:transparent;
   }
-  .card h2{
-    margin:0 0 4px; font-size:14px; text-transform:uppercase; letter-spacing:.08em;
-    color:var(--text-dim); font-weight:600;
+  .toolbar-right{display:flex;align-items:center;gap:10px;}
+
+  .zoom-controls{
+    display:flex;align-items:center;gap:2px;
+    background:var(--surface);border:1px solid var(--border);
+    border-radius:10px;padding:4px;
   }
-  .row{display:flex; gap:16px; flex-wrap:wrap;}
-  .col{flex:1; min-width:260px;}
-  label.field{display:block; margin-top:14px;}
-  label.field > span{display:block; font-size:13px; color:var(--text-dim); margin-bottom:6px;}
-  input[type=file]{
-    width:100%; padding:10px; background:var(--panel-2); border:1px solid var(--line);
-    border-radius:6px; color:var(--text); font-size:13px;
+  .zoom-controls button{
+    width:28px;height:28px;border:none;background:transparent;color:var(--text-dim);
+    border-radius:7px;cursor:pointer;font-size:16px;line-height:1;
+    display:flex;align-items:center;justify-content:center;
+    transition:background .15s,color .15s;
   }
-  textarea{
-    width:100%; min-height:180px; background:var(--panel-2); border:1px solid var(--line);
-    border-radius:6px; color:var(--text); padding:12px; font-size:14px; resize:vertical;
-    font-family:var(--mono);
+  .zoom-controls button:hover{background:var(--surface-3);color:var(--text);}
+  #zoom-level{
+    width:46px;text-align:center;font-family:'JetBrains Mono',monospace;
+    font-size:11px;color:var(--text-dim);
   }
-  select{
-    background:var(--panel-2); border:1px solid var(--line); color:var(--text);
-    padding:8px 10px; border-radius:6px; font-size:13px;
+  #fit-view{font-size:13px !important;}
+
+  .icon-btn{
+    width:36px;height:36px;border-radius:10px;border:1px solid var(--border);
+    background:var(--surface);color:var(--text-dim);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;
+    transition:background .15s,color .15s,border-color .15s;
   }
-  button{
-    background:var(--accent); color:#0a1613; border:none; border-radius:7px;
-    padding:11px 20px; font-size:14px; font-weight:700; cursor:pointer;
-    transition:filter .15s ease;
+  .icon-btn:hover{background:var(--surface-3);color:var(--text);}
+  .icon-btn svg{width:16px;height:16px;}
+
+  /* ---------- Canvas ---------- */
+  #viewport{
+    position:relative;flex:1;overflow:hidden;cursor:grab;
+    background-color:var(--bg-viewport);
+    background-image:radial-gradient(var(--dot) 1.3px, transparent 1.3px);
+    background-size:28px 28px;
+    background-position:0px 0px;
   }
-  button:hover{filter:brightness(1.08);}
-  button:disabled{background:var(--panel-2); color:var(--text-dim); cursor:not-allowed;}
-  button.secondary{
-    background:transparent; border:1px solid var(--accent); color:var(--accent);
+  #viewport.panning{cursor:grabbing;}
+  #world{
+    position:absolute;left:0;top:0;
+    transform-origin:0 0;
+    will-change:transform;
   }
-  .log{
-    font-family:var(--mono); font-size:12.5px; background:#0a0c0f; border:1px solid var(--line);
-    border-radius:6px; padding:14px; max-height:220px; overflow-y:auto; white-space:pre-wrap;
-    color:var(--text-dim);
+  #connections{position:absolute;left:0;top:0;overflow:visible;pointer-events:none;}
+  .connection-line{
+    fill:none;stroke:var(--border);stroke-width:1.6;
+    transition:stroke .2s;
   }
-  .log .ok{color:var(--accent);}
-  .log .err{color:var(--danger);}
-  .progress-bar{
-    height:6px; background:var(--panel-2); border-radius:3px; overflow:hidden; margin-top:10px;
+  .connection-line.active{stroke:var(--accent-2);opacity:.55;}
+  .port-dot{fill:var(--port);stroke:var(--bg-viewport);stroke-width:3;transition:fill .2s;}
+  .port-dot.active{fill:var(--port-active);}
+
+  /* ---------- Nodes ---------- */
+  .node{
+    position:absolute;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:16px;
+    box-shadow:var(--shadow);
+    display:flex;flex-direction:column;
+    user-select:none;
   }
-  .progress-bar > div{
-    height:100%; background:var(--accent); width:0%; transition:width .2s ease;
+  .node-header{
+    display:flex;align-items:center;gap:9px;
+    padding:14px 16px 10px 16px;
+    cursor:grab;
+    border-bottom:1px solid transparent;
   }
-  table{width:100%; border-collapse:collapse; font-size:13px;}
-  th{
-    text-align:left; color:var(--text-dim); font-weight:600; font-size:11px;
-    text-transform:uppercase; letter-spacing:.05em; padding:8px 8px; border-bottom:1px solid var(--line);
+  .node-header:active{cursor:grabbing;}
+  .node-icon{
+    width:22px;height:22px;border-radius:7px;flex-shrink:0;
+    display:flex;align-items:center;justify-content:center;
+    background:var(--surface-3);color:var(--text-dim);
   }
-  td{padding:9px 8px; border-bottom:1px solid var(--line); vertical-align:top;}
-  td.sent{max-width:340px; font-size:13px;}
-  td.time{font-family:var(--mono); color:var(--text-dim); white-space:nowrap;}
-  .badge{
-    display:inline-block; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:20px;
-    text-transform:uppercase; letter-spacing:.04em;
+  .node-icon svg{width:12px;height:12px;}
+  .node-title{
+    font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14.5px;
+    letter-spacing:-0.01em;
   }
-  .badge.good{background:rgba(79,209,165,.15); color:var(--accent);}
-  .badge.warn{background:rgba(224,164,88,.15); color:var(--warn);}
-  .badge.bad{background:rgba(224,104,95,.15); color:var(--danger);}
-  video{width:100%; border-radius:8px; background:#000; display:block;}
-  .hidden{display:none !important;}
-  .hint{font-size:12.5px; color:var(--text-dim); margin-top:6px;}
-  a.dl{color:var(--accent); font-weight:700; text-decoration:none;}
-  a.dl:hover{text-decoration:underline;}
-  .footer-note{color:var(--text-dim); font-size:12px; text-align:center; padding-top:10px;}
+  .node-title-input{
+    font-family:'Space Grotesk',sans-serif;font-weight:600;font-size:14.5px;
+    letter-spacing:-0.01em;background:transparent;border:none;color:var(--text);
+    width:100%;padding:2px 0;border-bottom:1px dashed transparent;
+  }
+  .node-title-input:hover,.node-title-input:focus{border-bottom:1px dashed var(--border);}
+  .node-title-input:focus{outline:none;}
+
+  .node-sub{
+    padding:0 16px 10px 16px;
+    font-size:11.5px;color:var(--text-faint);line-height:1.45;font-style:italic;
+  }
+  .node-body{padding:0 14px 14px 14px;flex:1;display:flex;}
+  .node-footer{
+    padding:10px 16px 14px 16px;border-top:1px solid var(--border-soft);
+    display:flex;align-items:center;justify-content:space-between;gap:8px;
+  }
+
+  textarea.node-textarea{
+    width:100%;height:100%;resize:none;border:1px solid var(--border-soft);
+    background:var(--surface-2);border-radius:11px;color:var(--text);
+    font-family:'Inter',sans-serif;font-size:13px;line-height:1.55;
+    padding:11px 12px;outline:none;transition:border-color .15s,background .15s;
+  }
+  textarea.node-textarea::placeholder{color:var(--text-faint);}
+  textarea.node-textarea:focus{border-color:var(--accent);background:var(--surface);}
+
+  .delete-btn{
+    margin-left:auto;width:22px;height:22px;border-radius:6px;border:none;
+    background:transparent;color:var(--text-faint);cursor:pointer;
+    display:flex;align-items:center;justify-content:center;flex-shrink:0;
+    transition:background .15s,color .15s;
+  }
+  .delete-btn:hover{background:var(--surface-3);color:var(--danger);}
+  .delete-btn svg{width:12px;height:12px;}
+
+  .word-badge{
+    font-family:'JetBrains Mono',monospace;font-size:10.5px;color:var(--text-faint);
+  }
+
+  /* ---------- Structure node ---------- */
+  .node-structure{width:300px;}
+  .curve-preview{
+    margin:0 16px 12px 16px;padding:12px 12px 4px 12px;
+    background:var(--surface-2);border:1px solid var(--border-soft);border-radius:12px;
+  }
+  .curve-preview svg{display:block;width:100%;height:76px;}
+  .curve-path{
+    fill:none;stroke:url(#curveGradient);stroke-width:2.4;
+    stroke-linecap:round;stroke-linejoin:round;
+    transition:d .4s ease;
+  }
+  .curve-area{opacity:.16;transition:d .4s ease;}
+
+  .structure-select{position:relative;margin:0 16px 10px 16px;}
+  .select-trigger{
+    width:100%;display:flex;align-items:center;justify-content:space-between;
+    padding:10px 12px;background:var(--surface-2);border:1px solid var(--border);
+    border-radius:10px;color:var(--text);font-family:'Space Grotesk',sans-serif;
+    font-size:13.5px;font-weight:500;cursor:pointer;transition:border-color .15s;
+  }
+  .select-trigger:hover{border-color:var(--accent);}
+  .select-trigger svg{width:12px;height:12px;color:var(--text-dim);transition:transform .18s;flex-shrink:0;}
+  .select-trigger.open svg{transform:rotate(180deg);}
+
+  .select-dropdown{
+    position:absolute;top:calc(100% + 6px);left:0;right:0;
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    box-shadow:var(--shadow);max-height:340px;overflow-y:auto;z-index:50;
+    padding:6px;
+  }
+  .select-dropdown[hidden]{display:none;}
+  .dropdown-item{
+    display:flex;align-items:center;gap:10px;padding:8px 8px;border-radius:9px;
+    cursor:pointer;transition:background .12s;
+  }
+  .dropdown-item:hover{background:var(--surface-3);}
+  .dropdown-item.selected{background:var(--surface-3);}
+  .mini-curve{width:52px;height:22px;flex-shrink:0;}
+  .mini-curve path{fill:none;stroke:var(--accent-2);stroke-width:2;stroke-linecap:round;}
+  .dropdown-item-text{display:flex;flex-direction:column;gap:1px;min-width:0;}
+  .dropdown-item-text strong{font-size:12.5px;font-weight:600;font-family:'Space Grotesk',sans-serif;}
+  .dropdown-item-text span{font-size:10.5px;color:var(--text-faint);}
+
+  .structure-desc{
+    margin:0 16px 12px 16px;font-size:11.5px;color:var(--text-dim);line-height:1.5;min-height:32px;
+  }
+
+  .btn-ghost{
+    margin:0 16px 16px 16px;padding:9px 12px;border-radius:10px;
+    background:transparent;border:1px dashed var(--border);color:var(--text-dim);
+    font-family:'Inter',sans-serif;font-size:12px;font-weight:500;cursor:pointer;
+    transition:border-color .15s,color .15s,background .15s;
+  }
+  .btn-ghost:hover{border-color:var(--accent);color:var(--accent);background:var(--surface-2);}
+
+  /* ---------- Section node ---------- */
+  .node-section{width:300px;height:250px;}
+  .node-section .node-body{padding:0 14px 14px 14px;}
+
+  /* ---------- Final node ---------- */
+  .node-final{width:330px;}
+  .node-final .node-header{border-bottom:1px solid var(--border-soft);}
+  .final-preview{
+    margin:0;height:280px;overflow-y:auto;
+    padding:14px 16px;font-size:12.5px;line-height:1.65;color:var(--text);
+    white-space:pre-wrap;font-family:'Inter',sans-serif;
+  }
+  .final-preview.empty{color:var(--text-faint);font-style:italic;}
+  .final-stats{display:flex;align-items:stretch;gap:8px;}
+  .stat-box{
+    flex:1;background:var(--surface-2);border:1px solid var(--border-soft);
+    border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:2px;
+  }
+  .stat-label{font-size:9.5px;color:var(--text-faint);text-transform:uppercase;letter-spacing:.05em;}
+  .stat-value{font-family:'JetBrains Mono',monospace;font-size:15px;font-weight:500;color:var(--text);}
+  .stat-box.duration{background:linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, var(--surface-2)), color-mix(in srgb, var(--accent-2) 18%, var(--surface-2)));}
+  .wpm-row{
+    display:flex;align-items:center;gap:6px;padding:0 16px 16px 16px;
+  }
+  .wpm-row label{font-size:11px;color:var(--text-dim);white-space:nowrap;}
+  .wpm-row input{
+    width:56px;background:var(--surface-2);border:1px solid var(--border-soft);
+    border-radius:8px;color:var(--text);font-family:'JetBrains Mono',monospace;
+    font-size:12px;padding:5px 6px;outline:none;text-align:center;
+  }
+  .wpm-row input:focus{border-color:var(--accent);}
+
+  /* ---------- Theme toggle ---------- */
+  .theme-toggle svg{position:absolute;transition:opacity .2s,transform .2s;}
+  .theme-toggle .sun{opacity:0;transform:scale(.5) rotate(-40deg);}
+  .theme-toggle .moon{opacity:1;transform:scale(1) rotate(0);}
+  :root[data-theme="light"] .theme-toggle .sun{opacity:1;transform:scale(1) rotate(0);}
+  :root[data-theme="light"] .theme-toggle .moon{opacity:0;transform:scale(.5) rotate(40deg);}
+  .theme-toggle{position:relative;}
+
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px;}
+  ::-webkit-scrollbar-thumb:hover{background:var(--text-faint);}
+
+  button:focus-visible, input:focus-visible, textarea:focus-visible, [tabindex]:focus-visible{
+    outline:2px solid var(--accent);outline-offset:1px;
+  }
+
+  .hint-toast{
+    position:absolute;bottom:18px;left:50%;transform:translateX(-50%);
+    background:var(--surface);border:1px solid var(--border);border-radius:10px;
+    padding:8px 14px;font-size:11.5px;color:var(--text-dim);box-shadow:var(--shadow-soft);
+    display:flex;align-items:center;gap:8px;z-index:10;
+  }
+  .hint-toast kbd{
+    background:var(--surface-3);border:1px solid var(--border);border-radius:5px;
+    padding:1px 5px;font-family:'JetBrains Mono',monospace;font-size:10px;
+  }
+
+  /* ---------- Confirm modal (replaces window.confirm, unreliable in sandboxed iframes) ---------- */
+  .modal-overlay{
+    position:fixed;inset:0;background:rgba(0,0,0,.45);
+    display:flex;align-items:center;justify-content:center;z-index:1000;
+  }
+  .modal-overlay[hidden]{display:none;}
+  .modal-box{
+    width:340px;max-width:90vw;background:var(--surface);border:1px solid var(--border);
+    border-radius:14px;box-shadow:var(--shadow);padding:20px;
+  }
+  .modal-box p{margin:0 0 18px 0;font-size:13.5px;line-height:1.55;color:var(--text);}
+  .modal-actions{display:flex;justify-content:flex-end;gap:8px;}
+  .modal-actions button{
+    padding:8px 14px;border-radius:9px;font-family:'Inter',sans-serif;font-size:12.5px;
+    font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--surface-2);color:var(--text);
+    transition:background .15s,border-color .15s;
+  }
+  .modal-actions button:hover{background:var(--surface-3);}
+  .modal-actions .modal-confirm{
+    background:var(--accent);border-color:var(--accent);color:#fff;
+  }
+  .modal-actions .modal-confirm:hover{opacity:.9;}
 </style>
 </head>
 <body>
+<div id="app">
 
-<header>
-  <h1>Script<span>Cut</span></h1>
-  <p>Monta il video seguendo lo script: trascrizione, allineamento e taglio girano tutti nel tuo browser. Nessun upload, nessuna API, nessun server.</p>
-</header>
-
-<main>
-
-  <section class="card">
-    <h2>1 — Materiali</h2>
-    <div class="row">
-      <div class="col">
-        <label class="field">
-          <span>Video (il tuo ciak)</span>
-          <input type="file" id="videoInput" accept="video/*">
-        </label>
+  <header class="toolbar">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.4" stroke-linecap="round"><path d="M2 15 C 7 15, 7 6, 12 9 C 17 12, 17 3, 22 3"/></svg>
       </div>
-      <div class="col">
-        <label class="field">
-          <span>Lingua del parlato</span>
-          <select id="langSelect">
-            <option value="italian" selected>Italiano</option>
-            <option value="english">Inglese</option>
-            <option value="spanish">Spagnolo</option>
-            <option value="french">Francese</option>
-            <option value="german">Tedesco</option>
-          </select>
-        </label>
+      <span class="brand-name">Attention<em>Script</em></span>
+    </div>
+    <div class="toolbar-right">
+      <div class="zoom-controls">
+        <button id="zoom-out" title="Riduci zoom">−</button>
+        <span id="zoom-level">100%</span>
+        <button id="zoom-in" title="Aumenta zoom">+</button>
+        <button id="fit-view" title="Adatta vista">⤢</button>
+      </div>
+      <button class="icon-btn theme-toggle" id="theme-toggle" aria-label="Cambia tema">
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div id="viewport">
+    <div id="world">
+      <svg id="connections" width="1" height="1">
+        <defs>
+          <linearGradient id="curveGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="var(--accent)"/>
+            <stop offset="100%" stop-color="var(--accent-2)"/>
+          </linearGradient>
+          <linearGradient id="curveFill" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="var(--accent-2)" stop-opacity="0.9"/>
+            <stop offset="100%" stop-color="var(--accent-2)" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+    <div class="hint-toast">
+      <span>Trascina lo sfondo per spostarti</span><span>·</span><span>Rotellina per lo zoom</span><span>·</span><span>Trascina l'intestazione di un modulo per muoverlo</span>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="confirmOverlay" hidden>
+    <div class="modal-box">
+      <p id="confirmMessage"></p>
+      <div class="modal-actions">
+        <button type="button" id="confirmCancel">Annulla</button>
+        <button type="button" class="modal-confirm" id="confirmOk">Continua</button>
       </div>
     </div>
-    <label class="field">
-      <span>Script (incolla il testo che reciti — una frase per riga o punteggiatura normale)</span>
-      <textarea id="scriptInput" placeholder="Ciao a tutti, benvenuti nel canale. Oggi parliamo di come funziona questo tool..."></textarea>
-    </label>
-    <label class="field">
-      <span>Se una frase è ripetuta più volte nel video, quale take tenere?</span>
-      <select id="takePolicy">
-        <option value="last" selected>Ultima ripetizione (di solito la più corretta)</option>
-        <option value="best">Corrispondenza migliore col testo</option>
-      </select>
-    </label>
-    <div style="margin-top:18px;">
-      <button id="btnTranscribe">Trascrivi e allinea</button>
-    </div>
-    <div class="progress-bar"><div id="progFill"></div></div>
-    <div class="log" id="log">In attesa...</div>
-  </section>
+  </div>
 
-  <section class="card hidden" id="alignCard">
-    <h2>2 — Segmenti individuati</h2>
-    <p class="hint">Ogni riga è una frase dello script. Se sono state trovate più ripetizioni, puoi scegliere quale take usare dal menu.</p>
-    <table>
-      <thead>
-        <tr><th>#</th><th>Frase (script)</th><th>Take scelto</th><th>Confidenza</th><th></th></tr>
-      </thead>
-      <tbody id="alignBody"></tbody>
-    </table>
-    <label class="field" style="margin-top:14px;">
-      <span>Tolleranza pause: <b id="tolValueLabel">40ms</b> — pause più brevi di questo valore NON vengono tagliate (restano nel video, taglio più morbido)</span>
-      <input type="range" id="tolSlider" min="0" max="150" step="5" value="40" style="width:100%;">
-    </label>
-    <div style="margin-top:18px;">
-      <button id="btnRender">Genera video montato</button>
-    </div>
-  </section>
+</div>
 
-  <section class="card hidden" id="resultCard">
-    <h2>3 — Risultato</h2>
-    <video id="resultVideo" controls></video>
-    <div style="margin-top:14px;">
-      <a class="dl" id="downloadLink" download="montaggio.mp4">⬇ Scarica il video montato (.mp4)</a>
-    </div>
-  </section>
+<script>
+(function(){
+  "use strict";
 
-  <p class="footer-note">Modelli e librerie caricati da CDN pubblici (transformers.js, Mediabunny). Il file video non lascia mai il tuo computer.</p>
+  /* ============ DATA: STRUCTURES ============ */
+  const STRUCTURES = [
+    { id:"cliffhanger", name:"Cliffhanger",
+      desc:`Costruisce tensione passo dopo passo e taglia proprio sul punto più alto, lasciando una domanda aperta.`,
+      sections:["Hook","Svolgimento","Cliffhanger finale"],
+      keyframes:[[0,45],[20,35],[40,50],[60,40],[80,75],[95,95],[100,97]] },
+    { id:"flashback", name:"Flashback",
+      desc:`Parte dal presente, salta indietro nel tempo per dare contesto, poi torna e chiude il cerchio.`,
+      sections:["Presente","Salto nel passato","Ritorno al presente","Risoluzione"],
+      keyframes:[[0,55],[20,60],[35,30],[50,25],[65,35],[85,70],[100,85]] },
+    { id:"flashforward", name:"Flashforward",
+      desc:`Mostra subito un'anteprima del momento più interessante, poi spiega come ci si arriva.`,
+      sections:["Anticipazione","Presente","Sviluppo","Payoff"],
+      keyframes:[[0,85],[15,90],[30,45],[50,40],[70,60],[85,75],[100,95]] },
+    { id:"hook", name:"Narrative Hook",
+      desc:`Apre in media res con uno shock immediato, poi contestualizza e sviluppa con calma.`,
+      sections:["Apertura shock","Contesto","Sviluppo","Chiusura"],
+      keyframes:[[0,30],[5,90],[15,80],[35,55],[55,60],[75,75],[100,90]] },
+    { id:"rollercoaster", name:"Rollercoaster",
+      desc:`Alterna più picchi e cali di tensione per tenere lo spettatore sempre sulle spine.`,
+      sections:["Salita","Colpo di scena","Discesa","Nuovo colpo di scena","Finale"],
+      keyframes:[[0,40],[15,75],[30,35],[45,80],[60,40],[80,85],[100,95]] },
+    { id:"slowburn", name:"Slow Burn",
+      desc:`Costruzione lenta e progressiva della tensione, senza scosse, fino al climax finale.`,
+      sections:["Introduzione","Costruzione","Tensione crescente","Climax"],
+      keyframes:[[0,20],[25,30],[50,45],[75,65],[100,90]] },
+    { id:"twist", name:"Twist Ending",
+      desc:`Mantiene un tono calmo e prevedibile per gran parte del video, poi ribalta tutto nel finale.`,
+      sections:["Normalità","Sviluppo","Falsa risoluzione","Colpo di scena"],
+      keyframes:[[0,45],[30,50],[55,55],[75,35],[88,40],[96,95],[100,98]] },
+    { id:"listicle", name:"Listicle Ramp",
+      desc:`Un elenco a intensità crescente: dal punto più debole al più forte, tenuto per ultimo.`,
+      sections:["Intro","Punto 1","Punto 2","Punto 3","Punto forte finale"],
+      keyframes:[[0,30],[20,30],[22,50],[45,50],[47,68],[70,68],[72,88],[100,92]] }
+  ];
 
-</main>
-
-<script type="module">
-import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2";
-import {
-  Input, ALL_FORMATS, BlobSource,
-  Output, Mp4OutputFormat, BufferTarget,
-  AudioBufferSink, VideoSampleSink, AudioSampleSink,
-  VideoSampleSource, AudioSampleSource,
-  QUALITY_HIGH
-} from "https://esm.sh/mediabunny@1.40.1";
-
-env.allowLocalModels = false;
-
-const logEl = document.getElementById("log");
-const progFill = document.getElementById("progFill");
-function log(msg, cls){
-  const line = document.createElement("div");
-  if(cls) line.className = cls;
-  line.textContent = msg;
-  logEl.appendChild(line);
-  logEl.scrollTop = logEl.scrollHeight;
-}
-function setProgress(pct){ progFill.style.width = Math.max(0,Math.min(100,pct)) + "%"; }
-
-// ---------- Normalizzazione testo ----------
-function normWord(w){
-  return w
-    .toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // rimuove accenti per il confronto
-    .replace(/[^a-z0-9']/g, "");
-}
-
-function splitScriptIntoSentences(text){
-  const raw = text
-    .split(/(?<=[.!?])\s+|\n+/)
-    .map(s => s.trim())
-    .filter(Boolean);
-  return raw.map(sentence => ({
-    text: sentence,
-    tokens: sentence.split(/\s+/).map(normWord).filter(Boolean)
-  })).filter(s => s.tokens.length > 0);
-}
-
-// ---------- Allineamento: LCS tra due sequenze di token ----------
-// LCS con backtrace: oltre alla lunghezza della corrispondenza, restituisce
-// l'indice (relativo alla finestra "b") della prima e dell'ultima parola
-// che ha davvero trovato un match nello script. Questo permette di tagliare
-// il segmento esattamente ai bordi delle parole corrispondenti, escludendo
-// parole di contorno (esitazioni, pause, filler) catturate dalla finestra.
-function lcsMatch(a, b){
-  const n = a.length, m = b.length;
-  const dp = Array.from({length: n+1}, () => new Array(m+1).fill(0));
-  for(let i=1;i<=n;i++){
-    for(let j=1;j<=m;j++){
-      if(a[i-1] === b[j-1]) dp[i][j] = dp[i-1][j-1] + 1;
-      else dp[i][j] = Math.max(dp[i-1][j], dp[i][j-1]);
-    }
+  const HINTS = [
+    [["hook","apertura shock","salita","anticipazione","intro"], `Cattura subito l'attenzione: una domanda, una frase shock o un'anteprima del momento più interessante.`],
+    [["cliffhanger finale"], `Interrompi sul punto più intenso: lascia una domanda aperta per il prossimo video.`],
+    [["salto nel passato"], `Torna indietro nel tempo per dare contesto o rivelare un dettaglio chiave.`],
+    [["ritorno al presente"], `Riporta lo spettatore al presente, collegando il passato al momento attuale.`],
+    [["colpo di scena"], `Rivela un twist inaspettato che ribalta ciò che lo spettatore pensava di sapere.`],
+    [["tensione crescente"], `Alza gradualmente la posta in gioco, aggiungendo dettagli che aumentano la suspense.`],
+    [["falsa risoluzione"], `Fai credere che la storia sia finita: è la calma prima del vero colpo di scena.`],
+    [["normalità"], `Presenta una situazione ordinaria: è la base da cui partirà il ribaltamento finale.`],
+    [["discesa"], `Un momento di respiro dopo la tensione, prima del prossimo colpo di scena.`],
+    [["punto forte finale"], `Il punto più forte o sorprendente della lista: tienilo per ultimo.`],
+    [["punto 1","punto 2","punto 3"], `Un punto della lista, con intensità crescente rispetto al precedente.`],
+    [["payoff"], `Dai finalmente la ricompensa che avevi promesso all'inizio.`],
+    [["svolgimento","sviluppo","costruzione","contesto"], `Il corpo centrale: spiega, mostra esempi, costruisci l'argomento o la tensione.`],
+    [["conclusione","risoluzione","chiusura","climax","finale","presente"], `Chiudi il cerchio: una risposta, una call to action o un pensiero finale.`]
+  ];
+  function getHint(title){
+    const t = (title||"").toLowerCase();
+    for(const [keys,hint] of HINTS){ if(keys.some(k=>t.includes(k))) return hint; }
+    return `Scrivi qui il contenuto di questa sezione.`;
   }
-  let i = n, j = m, firstJ = null, lastJ = null;
-  while(i > 0 && j > 0){
-    if(a[i-1] === b[j-1]){
-      if(lastJ === null) lastJ = j - 1;
-      firstJ = j - 1;
-      i--; j--;
-    } else if(dp[i-1][j] >= dp[i][j-1]){
-      i--;
-    } else {
-      j--;
-    }
-  }
-  return { length: dp[n][m], firstJ, lastJ };
-}
 
-// Per ogni frase dello script, cerca finestre candidate nella trascrizione
-// e restituisce tutte le occorrenze sopra soglia con relativo punteggio.
-// Il segmento di ogni candidato è già ritagliato alle parole effettivamente
-// corrispondenti (niente parole di contorno/pause ai bordi).
-function findCandidates(sentenceTokens, transcriptWords, normTranscript){
-  const n = sentenceTokens.length;
-  const minLen = Math.max(1, n - 2);
-  const maxLen = n + Math.min(4, Math.ceil(n * 0.4));
-  const candidates = [];
-  let bestScoreSeen = 0; // per diagnostica, anche sotto soglia
-  const step = n > 12 ? 2 : 1; // per frasi lunghe, scansione un po' più larga per velocità
-  for(let len = minLen; len <= maxLen; len++){
-    for(let i = 0; i + len <= normTranscript.length; i += step){
-      const window = normTranscript.slice(i, i + len);
-      const { length: matchLen, firstJ, lastJ } = lcsMatch(sentenceTokens, window);
-      const score = matchLen / n;
-      if(score > bestScoreSeen) bestScoreSeen = score;
-      if(score >= 0.55 && firstJ !== null){
-        const startIdx = i + firstJ;
-        const endIdx = i + lastJ;
-        candidates.push({
-          startIdx,
-          endIdx,
-          score,
-          startTime: transcriptWords[startIdx].start,
-          endTime: transcriptWords[endIdx].end
-        });
-      }
-    }
-  }
-  // Deduplica candidati che si sovrappongono troppo, tenendo il migliore
-  candidates.sort((a,b) => a.startTime - b.startTime);
-  const merged = [];
-  for(const c of candidates){
-    const last = merged[merged.length - 1];
-    if(last && c.startTime < last.endTime + 0.15){
-      if(c.score > last.score) merged[merged.length - 1] = c;
-    } else {
-      merged.push(c);
-    }
-  }
-  merged.bestScoreSeen = bestScoreSeen; // agganciato all'array per comodità di lettura fuori
-  return merged;
-}
-
-function pickTake(candidates, policy){
-  if(candidates.length === 0) return null;
-  if(policy === "last") return candidates[candidates.length - 1];
-  // "best": punteggio più alto, a parità vince il più recente nel tempo
-  return candidates.reduce((best, c) =>
-    (c.score > best.score || (c.score === best.score && c.startTime > best.startTime)) ? c : best
-  , candidates[0]);
-}
-
-function resampleLinear(samples, fromRate, toRate){
-  const ratio = fromRate / toRate;
-  const newLen = Math.round(samples.length / ratio);
-  const out = new Float32Array(newLen);
-  for(let i=0;i<newLen;i++){
-    const srcPos = i * ratio;
-    const i0 = Math.floor(srcPos), i1 = Math.min(i0+1, samples.length-1);
-    const frac = srcPos - i0;
-    out[i] = samples[i0] * (1-frac) + samples[i1] * frac;
-  }
-  return out;
-}
-
-// ---------- Stato globale ----------
-let videoFile = null;
-let mediaInput = null;      // istanza Input (mediabunny) riutilizzata tra trascrizione e rendering
-let mediaDuration = 0;
-let alignedSegments = [];   // { text, candidates, chosen }
-let whisperSamples = null;  // audio mono 16kHz usato per Whisper, riutilizzato per rilevare inizio/fine parlato
-let transcriptWordsGlobal = []; // parole trascritte con timestamp, riusate in fase di render per conoscere i confini delle parole vicine
-const WHISPER_SR = 16000;
-
-// Rileva l'inizio reale del parlato vicino a centerTime analizzando l'energia
-// dell'audio (i timestamp di Whisper a volte includono un pezzo della pausa
-// prima della prima parola: qui troviamo il punto acustico esatto).
-function frameRMS(samples, startIdx, frameLen){
-  let sum = 0;
-  const end = Math.min(startIdx + frameLen, samples.length);
-  for(let i = startIdx; i < end; i++) sum += samples[i] * samples[i];
-  return Math.sqrt(sum / Math.max(1, end - startIdx));
-}
-
-const VAD_THRESHOLD_MIN = 0.02;  // soglia minima di sicurezza, usata solo se la stima del rumore fallisce
-const VAD_FRAME_S = 0.005;       // finestra da 5ms: risoluzione fine, quasi al millisecondo
-const MIN_VOICED_FRAMES = 3;     // ~15ms di energia sostenuta per confermare che è parlato vero e non un click/respiro
-const MAX_EDGE_SILENCE = 0.005;  // tolleranza massima di pausa residua ai bordi del taglio: 5ms, come richiesto
-
-// Stima il rumore di fondo attorno a centerTime guardando i frame più "quieti"
-// della zona: la soglia VAD diventa così adattiva invece che un numero fisso,
-// il che evita di scambiare respiri/rumore ambientale per inizio/fine parola
-// (o, all'opposto, di perdere parole pronunciate piano).
-function estimateNoiseFloor(samples, sr, centerTime, span = 0.5){
-  const frameLen = Math.round(sr * VAD_FRAME_S);
-  const startSample = Math.max(0, Math.round((centerTime - span) * sr));
-  const endSample = Math.min(samples.length - frameLen, Math.round((centerTime + span) * sr));
-  const energies = [];
-  for(let idx = startSample; idx <= endSample; idx += frameLen){
-    energies.push(frameRMS(samples, idx, frameLen));
-  }
-  if(energies.length === 0) return VAD_THRESHOLD_MIN;
-  energies.sort((a, b) => a - b);
-  const floor = energies[Math.floor(energies.length * 0.15)]; // 15° percentile ≈ rumore di fondo tipico
-  return Math.max(floor * 3, VAD_THRESHOLD_MIN * 0.5);
-}
-
-const DEEP_SILENCE_FACTOR = 0.35; // se l'energia scende sotto questa frazione della soglia vocale, è silenzio vero (non solo un calo di intonazione)
-let pauseToleranceMs = 40; // ms di pausa tollerati senza tagliare — regolabile dallo slider in UI
-function getMinGapFrames(){
-  return Math.max(1, Math.round((pauseToleranceMs / 1000) / VAD_FRAME_S)); // converte la tolleranza in numero di frame da 5ms
-}
-
-// Scansiona tutto [leftBound, rightBound] (i confini reali delle parole vicine)
-// e restituisce l'elenco delle "isole" di parlato vero. Qualsiasi tratto in cui
-// il livello crolla molto sotto la soglia vocale, per un tempo sostenuto, viene
-// trattato come silenzio da scartare — anche se è in mezzo alla frase, non solo
-// in testa o in coda. Risultato: micro-tagli, niente pause nel montaggio finale.
-function detectVoiceIslands(samples, sr, leftBound, rightBound){
-  if(!samples || rightBound <= leftBound) return [{ start: leftBound, end: rightBound }];
-  const frameLen = Math.round(sr * VAD_FRAME_S);
-  const minGapFrames = getMinGapFrames();
-  const centerTime = (leftBound + rightBound) / 2;
-  const speechThreshold = estimateNoiseFloor(samples, sr, centerTime);
-  const deepSilenceThreshold = speechThreshold * DEEP_SILENCE_FACTOR;
-  const startSample = Math.max(0, Math.round(leftBound * sr));
-  const endSample = Math.min(samples.length - frameLen, Math.round(rightBound * sr));
-
-  const islands = [];
-  let inSpeech = false;
-  let voicedRun = 0;
-  let silentRun = 0;
-  let curStartIdx = null;
-  let lastVoicedIdx = null;
-
-  const closeIsland = () => {
-    const s = Math.max(leftBound, curStartIdx / sr - MAX_EDGE_SILENCE);
-    const e = Math.min(rightBound, (lastVoicedIdx + frameLen) / sr + MAX_EDGE_SILENCE);
-    if(e > s) islands.push({ start: s, end: e });
+  /* ============ STATE ============ */
+  const state = {
+    zoom:1, pan:{x:0,y:0},
+    wpm:140,
+    currentStructureId:"cliffhanger",
+    structureNode:{ x:90, y:340, w:300, h:0, el:null },
+    sectionNodes:[],
+    finalNode:{ x:0, y:0, w:330, h:0, el:null }
   };
 
-  for(let idx = startSample; idx <= endSample; idx += frameLen){
-    const rms = frameRMS(samples, idx, frameLen);
-    if(!inSpeech){
-      if(rms >= speechThreshold){
-        voicedRun++;
-        if(voicedRun >= MIN_VOICED_FRAMES){
-          inSpeech = true;
-          curStartIdx = idx - (voicedRun - 1) * frameLen;
-          lastVoicedIdx = idx;
-          silentRun = 0;
-        }
-      } else {
-        voicedRun = 0;
-      }
-    } else {
-      if(rms >= deepSilenceThreshold){
-        lastVoicedIdx = idx; // tollera cali di intonazione/consonanti sorde: resta dentro la parola
-        silentRun = 0;
-      } else {
-        silentRun++;
-        if(silentRun >= minGapFrames){
-          closeIsland(); // silenzio vero e sostenuto: chiudo qui l'isola vocale
-          inSpeech = false;
-          voicedRun = 0;
-          curStartIdx = null;
-        }
-      }
-    }
+  const viewport = document.getElementById("viewport");
+  const world = document.getElementById("world");
+  const svg = document.getElementById("connections");
+  const zoomLevelEl = document.getElementById("zoom-level");
+
+  /* ============ GEOMETRY HELPERS ============ */
+  function buildCurvePoints(keyframes, w, h, padY){
+    return keyframes.map(([x,pct])=>({
+      x: (x/100)*w,
+      y: padY + (1 - pct/100) * (h - 2*padY)
+    }));
   }
-  if(inSpeech && curStartIdx !== null) closeIsland();
+  function catmullRom2bezier(points){
+    let d = "";
+    for(let i=0;i<points.length-1;i++){
+      const p0 = points[i-1] || points[i];
+      const p1 = points[i];
+      const p2 = points[i+1];
+      const p3 = points[i+2] || p2;
+      const c1x = p1.x + (p2.x-p0.x)/6, c1y = p1.y + (p2.y-p0.y)/6;
+      const c2x = p2.x - (p3.x-p1.x)/6, c2y = p2.y - (p3.y-p1.y)/6;
+      if(i===0) d += `M${p1.x.toFixed(1)},${p1.y.toFixed(1)} `;
+      d += `C${c1x.toFixed(1)},${c1y.toFixed(1)} ${c2x.toFixed(1)},${c2y.toFixed(1)} ${p2.x.toFixed(1)},${p2.y.toFixed(1)} `;
+    }
+    return d;
+  }
+  function bezierConnector(x1,y1,x2,y2){
+    const dx = Math.max(Math.abs(x2-x1)*0.5, 60);
+    return `M${x1},${y1} C${x1+dx},${y1} ${x2-dx},${y2} ${x2},${y2}`;
+  }
 
-  if(islands.length === 0) islands.push({ start: leftBound, end: rightBound }); // fallback: nessun parlato rilevato
-  return islands;
-}
+  /* ============ MAIN CURVE PREVIEW ============ */
+  function renderMainCurve(container, keyframes, w, h){
+    const pts = buildCurvePoints(keyframes, w, h, 8);
+    const line = catmullRom2bezier(pts);
+    const areaPath = line + `L${pts[pts.length-1].x.toFixed(1)},${h} L${pts[0].x.toFixed(1)},${h} Z`;
+    container.innerHTML = `
+      <svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="none">
+        <path class="curve-area" d="${areaPath}" fill="url(#curveFill)"></path>
+        <path class="curve-path" d="${line}"></path>
+      </svg>`;
+    const pathEl = container.querySelector(".curve-path");
+    const len = pathEl.getTotalLength();
+    pathEl.style.strokeDasharray = len;
+    pathEl.style.strokeDashoffset = len;
+    pathEl.getBoundingClientRect();
+    pathEl.style.transition = "stroke-dashoffset 0.9s cubic-bezier(.4,0,.2,1)";
+    requestAnimationFrame(()=>{ pathEl.style.strokeDashoffset = 0; });
+  }
+  function miniCurveSVG(keyframes){
+    const w=52,h=22;
+    const pts = buildCurvePoints(keyframes, w, h, 3);
+    const d = catmullRom2bezier(pts);
+    return `<svg class="mini-curve" viewBox="0 0 ${w} ${h}"><path d="${d}"></path></svg>`;
+  }
 
-document.getElementById("videoInput").addEventListener("change", e => {
-  videoFile = e.target.files[0] || null;
-  mediaInput = null; // invalida, verrà ricreato al prossimo "Trascrivi"
-});
+  /* ============ NODE CREATION ============ */
+  function iconSVG(name){
+    const icons = {
+      structure:`<path d="M2 15 C 7 15, 7 6, 12 9 C 17 12, 17 3, 22 3"/>`,
+      section:`<path d="M4 4h16v16H4z"/><path d="M4 9h16"/>`,
+      final:`<path d="M14 2v6h6"/><path d="M6 2h8l6 6v14H6z"/><path d="M9 13h6M9 17h6"/>`
+    };
+    return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${icons[name]}</svg>`;
+  }
 
-document.getElementById("btnTranscribe").addEventListener("click", async () => {
-  const scriptText = document.getElementById("scriptInput").value.trim();
-  if(!videoFile){ log("Carica prima un video.", "err"); return; }
-  if(!scriptText){ log("Incolla lo script.", "err"); return; }
+  function createStructureNode(){
+    const n = state.structureNode;
+    const el = document.createElement("div");
+    el.className = "node node-structure";
+    el.style.left = n.x+"px"; el.style.top = n.y+"px";
+    el.innerHTML = `
+      <div class="node-header drag-handle">
+        <div class="node-icon">${iconSVG("structure")}</div>
+        <div class="node-title">Schema di attenzione</div>
+      </div>
+      <div class="curve-preview" id="mainCurveWrap"></div>
+      <div class="structure-select">
+        <button class="select-trigger" id="selectTrigger" type="button">
+          <span id="selectedName">—</span>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="select-dropdown" id="selectDropdown" hidden></div>
+      </div>
+      <p class="structure-desc" id="structureDesc"></p>
+      <button class="btn-ghost" id="addSectionBtn" type="button">+ Aggiungi sezione</button>
+    `;
+    world.appendChild(el);
+    n.el = el;
+    n.h = () => el.offsetHeight / state.zoom;
 
-  const btn = document.getElementById("btnTranscribe");
-  btn.disabled = true;
-  logEl.innerHTML = "";
-  setProgress(2);
+    enableDrag(el.querySelector(".drag-handle"), n);
 
-  try{
-    log("Apro il video (Mediabunny)...");
-    mediaInput = new Input({ source: new BlobSource(videoFile), formats: ALL_FORMATS });
-    mediaDuration = await mediaInput.computeDuration();
-    log(`Durata video rilevata: ${mediaDuration.toFixed(2)}s.`);
-    setProgress(10);
+    const trigger = el.querySelector("#selectTrigger");
+    const dropdown = el.querySelector("#selectDropdown");
+    dropdown.innerHTML = STRUCTURES.map(st=>`
+      <div class="dropdown-item" data-id="${st.id}">
+        ${miniCurveSVG(st.keyframes)}
+        <div class="dropdown-item-text"><strong>${st.name}</strong><span>${st.sections.length} sezioni</span></div>
+      </div>`).join("");
 
-    const audioTrack = await mediaInput.getPrimaryAudioTrack();
-    if(!audioTrack){ log("Il video non ha una traccia audio.", "err"); btn.disabled = false; return; }
-    log(`Diagnostica libreria — canDecode:${typeof audioTrack.canDecode} getSampleRate:${typeof audioTrack.getSampleRate} getNumberOfChannels:${typeof audioTrack.getNumberOfChannels}`);
-    const canDecodeAudio = await audioTrack.canDecode();
-    if(!canDecodeAudio){ log("Il codec audio di questo file non è decodificabile dal browser.", "err"); btn.disabled = false; return; }
-
-    log("Estraggo e decodifico l'audio...");
-    const sink = new AudioBufferSink(audioTrack);
-    const chunks = [];
-    let totalFrames = 0;
-    let origSampleRate = null; // letta dal primo blocco audio reale, mai dal metodo della libreria (inaffidabile)
-    for await (const wrapped of sink.buffers(0, mediaDuration)){
-      const buf = wrapped.buffer;
-      if(origSampleRate === null) origSampleRate = buf.sampleRate;
-      const len = buf.length;
-      const mono = new Float32Array(len);
-      const nCh = buf.numberOfChannels;
-      for(let ch=0; ch<nCh; ch++){
-        const data = buf.getChannelData(ch);
-        for(let i=0;i<len;i++) mono[i] += data[i] / nCh;
+    trigger.addEventListener("pointerdown", e=>e.stopPropagation());
+    trigger.addEventListener("click", (e)=>{
+      e.stopPropagation();
+      const isHidden = dropdown.hasAttribute("hidden");
+      if(isHidden){
+        dropdown.removeAttribute("hidden");
+        trigger.classList.add("open");
+        bringToFront(state.structureNode); // keep the open menu above every other module
       }
-      chunks.push(mono);
-      totalFrames += len;
-    }
-    if(origSampleRate === null){
-      log("Non sono riuscito a leggere alcun blocco audio dal video.", "err");
-      btn.disabled = false;
-      return;
-    }
-    log(`Sample rate rilevato: ${origSampleRate} Hz.`);
-    log(`Audio estratto: ${(totalFrames / origSampleRate).toFixed(2)}s (${chunks.length} blocchi).`);
-    const fullMono = new Float32Array(totalFrames);
-    let off = 0;
-    for(const c of chunks){ fullMono.set(c, off); off += c.length; }
-
-    let samples = fullMono;
-    if(Math.round(origSampleRate) !== 16000){
-      samples = resampleLinear(fullMono, origSampleRate, 16000);
-    }
-    whisperSamples = samples; // riutilizzato in fase di montaggio per rifinire inizio/fine parlato
-    setProgress(28);
-
-    log("Carico il modello Whisper (prima volta: qualche minuto di download)...");
-    const transcriber = await pipeline(
-      "automatic-speech-recognition",
-      "Xenova/whisper-small",
-      { progress_callback: (p) => {
-          if(p.status === "progress" && p.file){
-            setProgress(28 + (p.progress || 0) * 0.3);
-          }
-        }
-      }
-    );
-    setProgress(58);
-
-    log("Trascrivo il parlato con timestamp parola per parola...");
-    const lang = document.getElementById("langSelect").value;
-    const result = await transcriber(samples, {
-      language: lang,
-      task: "transcribe", // fondamentale: senza questo Whisper a volte TRADUCE in inglese invece di trascrivere
-      chunk_length_s: 30,
-      stride_length_s: 5,
-      return_timestamps: "word"
+      else { dropdown.setAttribute("hidden",""); trigger.classList.remove("open"); }
     });
-    setProgress(78);
+    dropdown.querySelectorAll(".dropdown-item").forEach(item=>{
+      item.addEventListener("pointerdown", e=>e.stopPropagation());
+      item.addEventListener("click", (e)=>{
+        e.stopPropagation();
+        selectStructure(item.dataset.id);
+      });
+    });
+    document.addEventListener("click", (e)=>{
+      if(!el.contains(e.target)){ dropdown.setAttribute("hidden",""); trigger.classList.remove("open"); }
+    });
 
-    const transcriptWords = (result.chunks || [])
-      .filter(c => c.text && c.text.trim())
-      .map(c => ({
-        word: c.text.trim(),
-        start: c.timestamp[0] ?? 0,
-        end: (c.timestamp[1] ?? c.timestamp[0] ?? 0)
-      }));
+    el.querySelector("#addSectionBtn").addEventListener("click", addSection);
+  }
 
-    if(transcriptWords.length === 0){
-      log("Non sono riuscito a ottenere timestamp per parola dal modello. Prova con un video più corto o cambia lingua.", "err");
-      btn.disabled = false;
+  function createSectionNode(sec){
+    const el = document.createElement("div");
+    el.className = "node node-section";
+    el.style.left = sec.x+"px"; el.style.top = sec.y+"px"; el.style.width = sec.w+"px";
+    el.innerHTML = `
+      <div class="node-header drag-handle">
+        <div class="node-icon">${iconSVG("section")}</div>
+        <input class="node-title-input" value="${escapeAttr(sec.title)}" spellcheck="false">
+        <button class="delete-btn" title="Rimuovi sezione" type="button">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        </button>
+      </div>
+      <div class="node-sub">${escapeHTML(sec.hint)}</div>
+      <div class="node-body"><textarea class="node-textarea" placeholder="Scrivi qui…"></textarea></div>
+    `;
+    world.appendChild(el);
+    sec.el = el;
+
+    enableDrag(el.querySelector(".drag-handle"), sec);
+
+    const titleInput = el.querySelector(".node-title-input");
+    titleInput.addEventListener("pointerdown", e=>e.stopPropagation());
+    titleInput.addEventListener("input", ()=>{ sec.title = titleInput.value; updateFinal(); });
+
+    const ta = el.querySelector("textarea");
+    ta.addEventListener("pointerdown", e=>e.stopPropagation());
+    ta.addEventListener("input", ()=>{ sec.text = ta.value; updateFinal(); });
+
+    el.querySelector(".delete-btn").addEventListener("click", (e)=>{
+      e.stopPropagation();
+      removeSection(sec.id);
+    });
+  }
+
+  function createFinalNode(){
+    const n = state.finalNode;
+    const el = document.createElement("div");
+    el.className = "node node-final";
+    el.style.left = n.x+"px"; el.style.top = n.y+"px"; el.style.width = n.w+"px";
+    el.innerHTML = `
+      <div class="node-header drag-handle">
+        <div class="node-icon">${iconSVG("final")}</div>
+        <div class="node-title">Script finale</div>
+      </div>
+      <div class="final-preview empty" id="finalPreview">Scrivi nei moduli per generare lo script…</div>
+      <div class="node-footer" style="flex-direction:column;align-items:stretch;gap:10px;border-top:none;padding-top:0;">
+        <div class="final-stats">
+          <div class="stat-box">
+            <span class="stat-label">Parole</span>
+            <span class="stat-value" id="wordCount">0</span>
+          </div>
+          <div class="stat-box duration">
+            <span class="stat-label">Durata stimata</span>
+            <span class="stat-value" id="durationVal">0:00</span>
+          </div>
+        </div>
+      </div>
+      <div class="wpm-row">
+        <label for="wpmInput">Parole al minuto</label>
+        <input id="wpmInput" type="number" min="60" max="400" step="5" value="${state.wpm}">
+      </div>
+    `;
+    world.appendChild(el);
+    n.el = el;
+
+    enableDrag(el.querySelector(".drag-handle"), n);
+
+    const wpmInput = el.querySelector("#wpmInput");
+    wpmInput.addEventListener("pointerdown", e=>e.stopPropagation());
+    wpmInput.addEventListener("input", ()=>{
+      const v = parseInt(wpmInput.value,10);
+      state.wpm = (isFinite(v) && v>0) ? v : 140;
+      updateFinal();
+    });
+  }
+
+  function escapeHTML(s){ return (s||"").replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+  function escapeAttr(s){ return escapeHTML(s).replace(/"/g,"&quot;"); }
+
+  /* ============ CUSTOM CONFIRM MODAL ============
+     Replaces window.confirm(), which browsers can silently block (always
+     returning false with no dialog shown) inside sandboxed iframes/previews —
+     that made "change structure" look like it was doing nothing once text
+     had been written. */
+  const confirmOverlay = document.getElementById("confirmOverlay");
+  const confirmMessage = document.getElementById("confirmMessage");
+  const confirmOkBtn = document.getElementById("confirmOk");
+  const confirmCancelBtn = document.getElementById("confirmCancel");
+  function showConfirm(message){
+    return new Promise((resolve)=>{
+      confirmMessage.textContent = message;
+      confirmOverlay.removeAttribute("hidden");
+      function cleanup(result){
+        confirmOverlay.setAttribute("hidden","");
+        confirmOkBtn.removeEventListener("click", onOk);
+        confirmCancelBtn.removeEventListener("click", onCancel);
+        confirmOverlay.removeEventListener("click", onOverlay);
+        resolve(result);
+      }
+      function onOk(){ cleanup(true); }
+      function onCancel(){ cleanup(false); }
+      function onOverlay(e){ if(e.target===confirmOverlay) cleanup(false); }
+      confirmOkBtn.addEventListener("click", onOk);
+      confirmCancelBtn.addEventListener("click", onCancel);
+      confirmOverlay.addEventListener("click", onOverlay);
+    });
+  }
+
+  /* ============ DRAGGING ============ */
+  function enableDrag(handleEl, nodeState){
+    handleEl.addEventListener("pointerdown", (e)=>{
+      if(e.target.closest(".node-title-input, .delete-btn, button")) return;
+      e.stopPropagation();
+      handleEl.setPointerCapture(e.pointerId);
+      bringToFront(nodeState);
+      const startX = e.clientX, startY = e.clientY;
+      const origX = nodeState.x, origY = nodeState.y;
+      let moved = false;
+      function onMove(ev){
+        const dx = (ev.clientX-startX)/state.zoom;
+        const dy = (ev.clientY-startY)/state.zoom;
+        if(Math.abs(dx)>1 || Math.abs(dy)>1) moved = true;
+        nodeState.x = origX+dx; nodeState.y = origY+dy;
+        nodeState.el.style.left = nodeState.x+"px";
+        nodeState.el.style.top = nodeState.y+"px";
+        drawConnections();
+      }
+      function onUp(){
+        // Once the user has manually dragged a section/final node, it's
+        // "pinned": layout() will no longer auto-reposition it. Without
+        // this, any later layout() call (triggered by adding/removing a
+        // section, switching structure, or even a window resize while
+        // typing on mobile) would silently snap it back, which looked
+        // like the modules were randomly "jumping".
+        if(moved) nodeState.pinned = true;
+        handleEl.releasePointerCapture(e.pointerId);
+        handleEl.removeEventListener("pointermove", onMove);
+        handleEl.removeEventListener("pointerup", onUp);
+      }
+      handleEl.addEventListener("pointermove", onMove);
+      handleEl.addEventListener("pointerup", onUp);
+    });
+  }
+
+  let zCounter = 1;
+  function bringToFront(nodeState){
+    if(nodeState.el) nodeState.el.style.zIndex = ++zCounter;
+  }
+
+  /* ============ LAYOUT ============ */
+  function measuredHeight(nodeState){
+    // offsetHeight is the element's layout height and is NOT affected by
+    // the CSS transform:scale() applied to #world for zooming — transforms
+    // only change how something is painted, not its layout box. Dividing
+    // by state.zoom here used to double-count the zoom factor, which threw
+    // off every connection port and every auto-placed section position as
+    // soon as the view was zoomed away from 100% (e.g. after "fit view").
+    return nodeState.el ? nodeState.el.offsetHeight : 0;
+  }
+
+  function layout(){
+    const sH = measuredHeight(state.structureNode);
+    const structureCenterY = state.structureNode.y + sH/2;
+    const gap = 34;
+    const sectionW = 300;
+    const colX = state.structureNode.x + 300 + 170;
+
+    const heights = state.sectionNodes.map(measuredHeight);
+    const totalH = heights.reduce((a,b)=>a+b,0) + gap*Math.max(0,heights.length-1);
+    let curY = structureCenterY - totalH/2;
+    state.sectionNodes.forEach((sec,i)=>{
+      if(!sec.pinned){
+        sec.x = colX; sec.y = curY; sec.w = sectionW;
+        if(sec.el){ sec.el.style.left = sec.x+"px"; sec.el.style.top = sec.y+"px"; }
+      }
+      curY += heights[i] + gap;
+    });
+
+    const finalX = colX + sectionW + 190;
+    const bboxCenterY = heights.length
+      ? (state.sectionNodes[0].y + (curY - gap - state.sectionNodes[0].y - heights[heights.length-1])/2 + heights[heights.length-1]/2)
+      : structureCenterY;
+    const fH = measuredHeight(state.finalNode) || 480;
+    if(!state.finalNode.pinned){
+      state.finalNode.x = finalX;
+      state.finalNode.y = (heights.length ? bboxCenterY : structureCenterY) - fH/2;
+      if(state.finalNode.el){
+        state.finalNode.el.style.left = state.finalNode.x+"px";
+        state.finalNode.el.style.top = state.finalNode.y+"px";
+      }
+    }
+  }
+
+  /* ============ CONNECTIONS ============ */
+  function drawConnections(){
+    let html = `
+      <defs>
+        <linearGradient id="curveGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="var(--accent)"/>
+          <stop offset="100%" stop-color="var(--accent-2)"/>
+        </linearGradient>
+        <linearGradient id="curveFill" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="var(--accent-2)" stop-opacity="0.9"/>
+          <stop offset="100%" stop-color="var(--accent-2)" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+    `;
+    const sH = measuredHeight(state.structureNode);
+    const originX = state.structureNode.x + 300, originY = state.structureNode.y + sH/2;
+
+    state.sectionNodes.forEach(sec=>{
+      const h = measuredHeight(sec);
+      const y = sec.y + h/2;
+      html += `<path class="connection-line" d="${bezierConnector(originX,originY, sec.x, y)}"></path>`;
+    });
+    html += `<circle class="port-dot active" cx="${originX}" cy="${originY}" r="5"></circle>`;
+
+    const fH = measuredHeight(state.finalNode);
+    const finalX = state.finalNode.x, finalY = state.finalNode.y + fH/2;
+    state.sectionNodes.forEach(sec=>{
+      const h = measuredHeight(sec);
+      const sx = sec.x + sec.w, sy = sec.y + h/2;
+      const active = !!(sec.text && sec.text.trim());
+      html += `<path class="connection-line ${active?'active':''}" d="${bezierConnector(sx,sy, finalX, finalY)}"></path>`;
+      html += `<circle class="port-dot ${active?'active':''}" cx="${sx}" cy="${sy}" r="5"></circle>`;
+      html += `<circle class="port-dot ${active?'active':''}" cx="${sec.x}" cy="${sy}" r="5"></circle>`;
+    });
+    html += `<circle class="port-dot" cx="${finalX}" cy="${finalY}" r="5"></circle>`;
+
+    svg.innerHTML = html;
+  }
+
+  /* ============ STRUCTURE SELECTION / SECTIONS ============ */
+  async function selectStructure(id, force){
+    const st = STRUCTURES.find(s=>s.id===id);
+    if(!st) return;
+    const hasContent = state.sectionNodes.some(s=>s.text && s.text.trim());
+    if(hasContent && !force){
+      const ok = await showConfirm("Cambiare struttura cancellerà i testi già scritti nei moduli. Continuare?");
+      if(!ok) return;
+    }
+    state.currentStructureId = id;
+
+    const structEl = state.structureNode.el;
+    structEl.querySelector("#selectedName").textContent = st.name;
+    structEl.querySelector("#structureDesc").textContent = st.desc;
+    structEl.querySelectorAll(".dropdown-item").forEach(it=> it.classList.toggle("selected", it.dataset.id===id));
+    structEl.querySelector("#selectDropdown").setAttribute("hidden","");
+    structEl.querySelector("#selectTrigger").classList.remove("open");
+    renderMainCurve(structEl.querySelector("#mainCurveWrap"), st.keyframes, 264, 76);
+
+    state.sectionNodes.forEach(s=> s.el && s.el.remove());
+    state.sectionNodes = st.sections.map((title,i)=>({
+      id:"sec-"+id+"-"+i, title, text:"", hint:getHint(title), x:0,y:0,w:300, el:null
+    }));
+    state.sectionNodes.forEach(createSectionNode);
+
+    layout();
+    drawConnections();
+    updateFinal();
+  }
+
+  function addSection(){
+    const idx = state.sectionNodes.length+1;
+    const sec = { id:"sec-custom-"+Date.now(), title:"Nuova sezione "+idx, text:"", hint:getHint(""), x:0,y:0,w:300, el:null, pinned:true };
+    positionNewSection(sec);
+    state.sectionNodes.push(sec);
+    createSectionNode(sec);
+    drawConnections();
+    updateFinal();
+  }
+
+  // Places a freshly-added section under the lowest existing one, at the
+  // same column, without moving anything already on the canvas. Adding a
+  // section used to call layout(), which recomputed EVERY node's position
+  // from scratch — that's what was scrambling connections and yanking
+  // modules you'd already dragged into place.
+  function positionNewSection(sec){
+    const colX = state.structureNode.x + 300 + 170;
+    if(state.sectionNodes.length === 0){
+      const sH = measuredHeight(state.structureNode) || 300;
+      sec.x = colX;
+      sec.y = state.structureNode.y + sH/2 - 125;
       return;
     }
-
-    const normTranscript = transcriptWords.map(w => normWord(w.word));
-    transcriptWordsGlobal = transcriptWords;
-    log(`Trascritte ${transcriptWords.length} parole.`, "ok");
-    log("Testo trascritto: " + transcriptWords.map(w => w.word).join(" "));
-    setProgress(84);
-
-    log("Allineo lo script alla trascrizione e cerco le ripetizioni...");
-    const sentences = splitScriptIntoSentences(scriptText);
-    const policy = document.getElementById("takePolicy").value;
-    alignedSegments = [];
-
-    log(`Numero di frasi nello script: ${sentences.length}.`);
-    for(const s of sentences){
-      const candidates = findCandidates(s.tokens, transcriptWords, normTranscript);
-      const chosen = pickTake(candidates, policy);
-      const bestPct = Math.round((candidates.bestScoreSeen || 0) * 100);
-      log(`Frase "${s.text}" (${s.tokens.length} parole) — miglior punteggio trovato: ${bestPct}%${chosen ? "" : " (sotto soglia 55%, scartata)"}`);
-      alignedSegments.push({ text: s.text, candidates, chosen });
-    }
-    setProgress(100);
-    log("Allineamento completato.", "ok");
-    renderAlignmentTable();
-
-  }catch(err){
-    console.error(err);
-    log("Errore: " + err.message, "err");
-  }finally{
-    btn.disabled = false;
+    let maxBottom = -Infinity, refX = colX;
+    state.sectionNodes.forEach(s=>{
+      const h = measuredHeight(s) || 250;
+      const bottom = s.y + h;
+      if(bottom > maxBottom) maxBottom = bottom;
+      refX = s.x;
+    });
+    sec.x = refX;
+    sec.y = maxBottom + 34;
   }
-});
 
-function fmtTime(t){
-  if(t == null) return "—";
-  const m = Math.floor(t/60), s = (t%60).toFixed(2);
-  return `${m}:${s.padStart(5,"0")}`;
-}
+  function removeSection(id){
+    const idx = state.sectionNodes.findIndex(s=>s.id===id);
+    if(idx===-1) return;
+    const [sec] = state.sectionNodes.splice(idx,1);
+    if(sec.el) sec.el.remove();
+    drawConnections();
+    updateFinal();
+  }
 
-function renderAlignmentTable(){
-  const body = document.getElementById("alignBody");
-  body.innerHTML = "";
-  alignedSegments.forEach((seg, idx) => {
-    const tr = document.createElement("tr");
+  /* ============ FINAL SCRIPT ============ */
+  function updateFinal(){
+    const finalEl = state.finalNode.el;
+    if(!finalEl) return;
+    const preview = finalEl.querySelector("#finalPreview");
+    const wordCountEl = finalEl.querySelector("#wordCount");
+    const durationEl = finalEl.querySelector("#durationVal");
 
-    const tdIdx = document.createElement("td");
-    tdIdx.textContent = idx + 1;
+    const parts = state.sectionNodes
+      .filter(s=> s.text && s.text.trim())
+      .map(s=> s.text.trim());
+    const combined = parts.join("\n\n");
+    const words = combined ? combined.split(/\s+/).filter(Boolean).length : 0;
+    const seconds = state.wpm>0 ? Math.round(words/state.wpm*60) : 0;
+    const mm = Math.floor(seconds/60), ss = seconds%60;
 
-    const tdSent = document.createElement("td");
-    tdSent.className = "sent";
-    tdSent.textContent = seg.text;
+    preview.textContent = combined || "Scrivi nei moduli per generare lo script…";
+    preview.classList.toggle("empty", !combined);
+    wordCountEl.textContent = words;
+    durationEl.textContent = `${mm}:${String(ss).padStart(2,"0")}`;
 
-    const tdTake = document.createElement("td");
-    if(seg.candidates.length === 0){
-      tdTake.innerHTML = `<span class="badge bad">non trovato</span>`;
-    } else {
-      const sel = document.createElement("select");
-      seg.candidates.forEach((c, ci) => {
-        const opt = document.createElement("option");
-        opt.value = ci;
-        opt.textContent = `${fmtTime(c.startTime)} → ${fmtTime(c.endTime)}` + (seg.candidates.length > 1 ? `  (take ${ci+1}/${seg.candidates.length})` : "");
-        if(c === seg.chosen) opt.selected = true;
-        sel.appendChild(opt);
-      });
-      sel.addEventListener("change", () => { seg.chosen = seg.candidates[sel.value]; });
-      tdTake.appendChild(sel);
+    drawConnections();
+  }
+
+  /* ============ VIEWPORT: PAN / ZOOM ============ */
+  function applyTransform(){
+    world.style.transform = `translate(${state.pan.x}px, ${state.pan.y}px) scale(${state.zoom})`;
+    zoomLevelEl.textContent = Math.round(state.zoom*100)+"%";
+    const size = 28*state.zoom;
+    viewport.style.backgroundSize = `${size}px ${size}px`;
+    viewport.style.backgroundPosition = `${state.pan.x}px ${state.pan.y}px`;
+  }
+
+  function clamp(v,min,max){ return Math.min(max, Math.max(min,v)); }
+
+  let isPanning = false;
+  viewport.addEventListener("pointerdown",(e)=>{
+    if(e.target.closest(".node")) return;
+    isPanning = true;
+    viewport.classList.add("panning");
+    viewport.setPointerCapture(e.pointerId);
+    const startX = e.clientX-state.pan.x, startY = e.clientY-state.pan.y;
+    function onMove(ev){
+      if(!isPanning) return;
+      state.pan.x = ev.clientX-startX;
+      state.pan.y = ev.clientY-startY;
+      applyTransform();
     }
-
-    const tdScore = document.createElement("td");
-    if(seg.chosen){
-      const pct = Math.round(seg.chosen.score * 100);
-      const cls = pct >= 85 ? "good" : (pct >= 65 ? "warn" : "bad");
-      tdScore.innerHTML = `<span class="badge ${cls}">${pct}%</span>`;
-    } else {
-      tdScore.innerHTML = `<span class="badge bad">—</span>`;
+    function onUp(){
+      isPanning=false;
+      viewport.classList.remove("panning");
+      viewport.removeEventListener("pointermove", onMove);
+      viewport.removeEventListener("pointerup", onUp);
     }
-
-    const tdTime = document.createElement("td");
-    tdTime.className = "time";
-    tdTime.textContent = seg.chosen ? `${(seg.chosen.endTime - seg.chosen.startTime).toFixed(1)}s` : "";
-
-    tr.append(tdIdx, tdSent, tdTake, tdScore, tdTime);
-    body.appendChild(tr);
+    viewport.addEventListener("pointermove", onMove);
+    viewport.addEventListener("pointerup", onUp);
   });
-  document.getElementById("alignCard").classList.remove("hidden");
-}
 
-// ---------- Rendering finale con Mediabunny (nessun ffmpeg, nessun Worker) ----------
-const tolSlider = document.getElementById("tolSlider");
-const tolValueLabel = document.getElementById("tolValueLabel");
-tolSlider.addEventListener("input", () => {
-  pauseToleranceMs = Number(tolSlider.value);
-  tolValueLabel.textContent = `${pauseToleranceMs}ms`;
-});
+  viewport.addEventListener("wheel",(e)=>{
+    e.preventDefault();
+    const rect = viewport.getBoundingClientRect();
+    const mx = e.clientX-rect.left, my = e.clientY-rect.top;
+    const wx = (mx-state.pan.x)/state.zoom, wy = (my-state.pan.y)/state.zoom;
+    const factor = e.deltaY<0 ? 1.1 : 1/1.1;
+    const newZoom = clamp(state.zoom*factor, 0.3, 2);
+    state.pan.x = mx - wx*newZoom;
+    state.pan.y = my - wy*newZoom;
+    state.zoom = newZoom;
+    applyTransform();
+  }, {passive:false});
 
-document.getElementById("btnRender").addEventListener("click", async () => {
-  const usable = alignedSegments.filter(s => s.chosen);
-  if(usable.length === 0){ log("Nessun segmento valido da montare.", "err"); return; }
-  if(!mediaInput){ log("Ricarica il video e ripeti la trascrizione prima di montare.", "err"); return; }
-
-  const btn = document.getElementById("btnRender");
-  btn.disabled = true;
-  setProgress(0);
-  log("--- Inizio montaggio finale ---");
-
-  try{
-    const PAD = 0; // il margine (max 5ms) è già applicato dentro detectVoiceIslands, qui non serve altro
-
-    const videoTrack = await mediaInput.getPrimaryVideoTrack();
-    const audioTrack = await mediaInput.getPrimaryAudioTrack();
-    if(!videoTrack){ log("Nessuna traccia video trovata.", "err"); btn.disabled = false; return; }
-
-    const output = new Output({ format: new Mp4OutputFormat(), target: new BufferTarget() });
-    const videoSource = new VideoSampleSource({ codec: "avc", bitrate: QUALITY_HIGH });
-    output.addVideoTrack(videoSource);
-
-    let audioSource = null;
-    if(audioTrack && await audioTrack.canDecode()){
-      audioSource = new AudioSampleSource({ codec: "aac", bitrate: QUALITY_HIGH });
-      output.addAudioTrack(audioSource);
-    }
-
-    await output.start();
-
-    let cursor = 0;
-    for(let i=0;i<usable.length;i++){
-      const seg = usable[i].chosen;
-
-      // Margine di sicurezza quando non c'è una parola vicina nella trascrizione
-      // a fare da confine naturale: NON si deve mai arrivare a spazzare tutto il
-      // resto del video (0 / mediaDuration), altrimenti qualunque altro parlato
-      // presente altrove nella clip (es. un secondo ciak/ripetizione più avanti,
-      // non trascritto come parola nello script) verrebbe incluso per errore nel
-      // montaggio — è esattamente quello che causava le "ripetizioni" viste.
-      const SAFETY_MARGIN_S = 1.5;
-
-      // Confine sinistro: fine della parola precedente nella trascrizione, oppure
-      // un margine di sicurezza prima dell'inizio dichiarato della parola stessa.
-      const leftBound = seg.startIdx > 0
-        ? transcriptWordsGlobal[seg.startIdx - 1].end
-        : Math.max(0, seg.startTime - SAFETY_MARGIN_S);
-      // Confine destro: inizio della parola successiva, oppure un margine di
-      // sicurezza dopo la fine dichiarata della parola stessa.
-      const rightBound = seg.endIdx < transcriptWordsGlobal.length - 1
-        ? transcriptWordsGlobal[seg.endIdx + 1].start
-        : Math.min(mediaDuration, seg.endTime + SAFETY_MARGIN_S);
-
-      // Isole di parlato vero dentro l'intervallo: qualunque silenzio profondo e
-      // sostenuto (anche in mezzo alla frase) viene escluso, non solo testa/coda.
-      const islands = detectVoiceIslands(whisperSamples, WHISPER_SR, leftBound, rightBound);
-
-      for(let j=0;j<islands.length;j++){
-        const start = Math.max(0, islands[j].start - PAD);
-        const end = Math.min(mediaDuration, islands[j].end + PAD);
-        if(end <= start) continue;
-        log(`Copio segmento ${i+1}/${usable.length}, isola ${j+1}/${islands.length} (${(end-start).toFixed(2)}s)...`);
-
-        const vSink = new VideoSampleSink(videoTrack);
-        for await (const sample of vSink.samples(start, end)){
-          // Il sink può restituire il primo campione con timestamp leggermente
-          // precedente a "start" (allineamento a keyframe): l'offset relativo va
-          // sempre bloccato a un minimo di 0, altrimenti su un'isola in cima al
-          // video (cursor=0) si otterrebbe un timestamp negativo e il muxer va in errore.
-          const relTs = Math.max(0, sample.timestamp - start);
-          sample.setTimestamp(cursor + relTs);
-          await videoSource.add(sample);
-          sample.close();
-        }
-
-        if(audioSource){
-          const aSink = new AudioSampleSink(audioTrack);
-          for await (const sample of aSink.samples(start, end)){
-            const relTs = Math.max(0, sample.timestamp - start);
-            sample.setTimestamp(cursor + relTs);
-            await audioSource.add(sample);
-            sample.close();
-          }
-        }
-
-        cursor += (end - start);
-      }
-      setProgress(5 + ((i+1) / usable.length) * 85);
-    }
-
-
-    videoSource.close();
-    if(audioSource) audioSource.close();
-
-    log("Finalizzo il file mp4...");
-    await output.finalize();
-    setProgress(97);
-
-    const buffer = output.target.buffer;
-    const blob = new Blob([buffer], { type: "video/mp4" });
-    const url = URL.createObjectURL(blob);
-
-    document.getElementById("resultVideo").src = url;
-    document.getElementById("downloadLink").href = url;
-    document.getElementById("resultCard").classList.remove("hidden");
-    setProgress(100);
-    log("Montaggio completato.", "ok");
-
-  }catch(err){
-    console.error(err);
-    log("Errore durante il montaggio: " + err.message, "err");
-  }finally{
-    btn.disabled = false;
+  document.getElementById("zoom-in").addEventListener("click", ()=> zoomBy(1.15));
+  document.getElementById("zoom-out").addEventListener("click", ()=> zoomBy(1/1.15));
+  function zoomBy(factor){
+    const rect = viewport.getBoundingClientRect();
+    const mx = rect.width/2, my = rect.height/2;
+    const wx = (mx-state.pan.x)/state.zoom, wy = (my-state.pan.y)/state.zoom;
+    const newZoom = clamp(state.zoom*factor, 0.3, 2);
+    state.pan.x = mx - wx*newZoom;
+    state.pan.y = my - wy*newZoom;
+    state.zoom = newZoom;
+    applyTransform();
   }
-});
 
+  document.getElementById("fit-view").addEventListener("click", fitView);
+  function fitView(){
+    const nodes = [state.structureNode, ...state.sectionNodes, state.finalNode];
+    let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+    nodes.forEach(n=>{
+      const w = n.w || 300, h = measuredHeight(n) || 200;
+      minX = Math.min(minX, n.x); minY = Math.min(minY, n.y);
+      maxX = Math.max(maxX, n.x+w); maxY = Math.max(maxY, n.y+h);
+    });
+    const pad = 80;
+    minX-=pad; minY-=pad; maxX+=pad; maxY+=pad;
+    const rect = viewport.getBoundingClientRect();
+    const bw = maxX-minX, bh = maxY-minY;
+    const newZoom = clamp(Math.min(rect.width/bw, rect.height/bh), 0.3, 1.1);
+    state.zoom = newZoom;
+    state.pan.x = (rect.width - bw*newZoom)/2 - minX*newZoom;
+    state.pan.y = (rect.height - bh*newZoom)/2 - minY*newZoom;
+    applyTransform();
+  }
+
+  /* ============ THEME ============ */
+  document.getElementById("theme-toggle").addEventListener("click", ()=>{
+    const html = document.documentElement;
+    html.dataset.theme = html.dataset.theme==="dark" ? "light" : "dark";
+  });
+
+  /* ============ INIT ============ */
+  function init(){
+    createStructureNode();
+    createFinalNode();
+    selectStructure(state.currentStructureId, true);
+    applyTransform();
+    requestAnimationFrame(()=>{ layout(); drawConnections(); fitView(); });
+    // Only redraw the connector lines on resize — do NOT call layout() here.
+    // layout() recomputes every module's position from scratch, so calling
+    // it on resize used to wipe out any manual dragging (and on mobile,
+    // focusing a textarea to type often fires a resize event because the
+    // on-screen keyboard changes the viewport height).
+    window.addEventListener("resize", ()=> { drawConnections(); });
+  }
+  init();
+
+})();
 </script>
 </body>
 </html>
